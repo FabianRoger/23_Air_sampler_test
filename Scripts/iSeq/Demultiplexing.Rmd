@@ -1,0 +1,732 @@
+---
+title: "Sample_indexing"
+author: "Fabian Roger"
+date: "`r Sys.Date()`"
+output: html_notebook
+---
+
+Loading libraries
+
+```{r, message=FALSE}
+
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(readr)
+library(jsonlite)
+library(Biostrings)
+library(here)
+library(clipr)
+
+```
+
+```{r}
+sessionInfo()
+```
+
+# demultiplexing by index
+
+I use the [pheniqs](https://biosails.github.io/pheniqs/) software for demultiplexing. 
+
+> Galanti L, Shasha D, Gunsalus KC. 2021 Pheniqs 2.0: accurate, high-performance Bayesian decoding and confidence estimation for combinatorial barcode indexing. BMC Bioinformatics 22, 359. (doi:10.1186/s12859-021-04267-5)
+
+It uses Phred adjusted maximum likelihood decoding
+> A maximum likelihood decoder that directly estimates the decoding error probability from the base calling error probabilities provided by the sequencing platform. Abbreviated PAMLD.
+
+We need to provide it with a configuration file that links the samples to the dual unique indices. 
+
+## indices
+
+We used the Nextera Indecies from Shinis Group for barcoding. However, different markes were barcoded with different sample arrangements, so that we first demultiplex by barcode and then assign samples. 
+
+```{r}
+shini_barcodes <- read_xlsx(here("Documents", "Shini_barcodes_4_plates.xlsx"))
+
+shini_barcodes <- 
+  shini_barcodes %>% 
+  select(1,2) %>% 
+  mutate(P5_P7 = gsub(".+_.+_(.+)", "\\1", `DNA Oligo Name`),
+         Plate = rep(rep(1:4, each = 96),2)) %>% 
+  mutate(Barcode = gsub("CAAGCAGAAGACGGCATACGAGAT(.+)GTCTCGTGGGCTCGG", "\\1", `DNA Sequence (5' -> 3')`)) %>% 
+  mutate(Barcode = gsub("AATGATACGGCGACCACCGAGATCTACAC(.+)TCGTCGGCAGCGTC", "\\1", Barcode)) %>% 
+  mutate(name = gsub("(.+_.+)_.+", "\\1", `DNA Oligo Name`)) %>% 
+  select(-`DNA Sequence (5' -> 3')`, -`DNA Oligo Name`) %>%
+  pivot_wider(names_from = P5_P7, values_from = Barcode) %>% 
+  select(Plate, name, i5, i7) %>% 
+  mutate(i7_rc = as.character(reverseComplement(DNAStringSet(i7)))) %>% 
+  mutate(i5_rc = as.character(reverseComplement(DNAStringSet(i5)))) %>% 
+  filter(Plate %in% c(1,2))
+```
+
+
+
+## configuration file 
+
+phenix takes a json formatted configuration file. An example is given [here](https://github.com/biosails/pheniqs/blob/master/example/illumina_vignette/H7LT2DSXX_l01_sample_static.json) which we take as basis for modification 
+
+```{r}
+phenix_config <- read_json(here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "phenix_config_file.json"))
+```
+
+## base configurations
+
+Here we give the
++ input directory (where the files are)
++ output directory (where the files should be written to)
++ the 4 filenames (reads (R) and indices (I) for forward and reverse)
++ and the filename of the sample report
+
+note that $output will be ignored if we write the reads to demultiplexed fastq files
+```{r}
+phenix_config$PM <- "unkown"
+
+phenix_config$`base input url` <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124")
+
+phenix_config$`base output url` <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "demultiplexed")
+
+phenix_config$`flowcell id` <- "unkown"
+
+#forward reads
+phenix_config$input[[1]] <- "Undetermined_S0_L001_R1_001.fastq.gz"
+
+#forward index
+phenix_config$input[[2]] <- "Undetermined_S0_L001_I1_001.fastq.gz"
+
+#reverse index
+phenix_config$input[[3]] <- "Undetermined_S0_L001_I2_001.fastq.gz"
+
+#reverse reads
+phenix_config$input[[4]] <- "Undetermined_S0_L001_R2_001.fastq.gz"
+
+#output
+phenix_config$output[[1]] <- "Undetermined_S0_L001.bam"
+
+#report
+phenix_config$`report url` <- "sample_report.json"
+
+```
+
+
+#barcodes
+
+Here we format the core of the configuration file, associating each sample with the unique barcode configuration
+
+shini_barcodes is a dataframe containing the sample indicies, the P5 barcode, the P7 barcode and the reverseComplement of the barcode (in my case)
+
+```{r}
+my_config <- 
+phenix_config$sample$codec[1:nrow(shini_barcodes)]
+
+names(my_config) <- paste("@", shini_barcodes$name, sep ="")
+
+for(i in names(my_config)){
+  
+  sample <- gsub("@", "", i)
+  my_config[[i]]$LB <- sample
+  my_config[[i]]$barcode[[1]] <- shini_barcodes[shini_barcodes$name == sample,]$i7_rc
+  my_config[[i]]$barcode[[2]] <- shini_barcodes[shini_barcodes$name == sample,]$i5_rc
+  
+  my_config[[i]]$output[[1]] <- paste(sample, "_R1.fastq.gz", sep ="")
+  my_config[[i]]$output[[2]] <- paste(sample, "_R2.fastq.gz", sep ="")
+  
+}
+
+phenix_config$sample$codec <- my_config
+
+phenix_config$sample$undetermined$output[[1]] <- "unclear_barcode_R1.fastq.gz"
+phenix_config$sample$undetermined$output[[2]] <- "unclear_barcode_R2.fastq.gz"
+
+#barcode length 10 bp
+phenix_config$sample$transform$token[[1]] <- "1::10"
+phenix_config$sample$transform$token[[2]] <- "2::10"
+```
+
+## Save configuration file
+```{r}
+path_to_file <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "phenix_config_iSeq.json")
+
+write_json(phenix_config, path_to_file, pretty = T, auto_unbox = TRUE)
+```
+
+
+##create output folder
+```{r}
+dir.create(phenix_config$`base output url`)
+```
+
+
+## run pheniqs
+```{r}
+system(paste("/Users/fabian/pheniqs_head_static/bin/static-HEAD/install/bin/pheniqs mux --config ",path_to_file, sep = ""))
+```
+
+## check report
+```{r}
+report <- read_json(here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124","demultiplexed", "sample_report.json"))
+```
+
+total number of reads
+```{r}
+report$outgoing$count
+```
+
+
+fraction of reads with valid indices
+```{r}
+report$outgoing$`pf fraction`
+```
+
+
+```{r}
+report$sample$classified %>% 
+  lapply(., as.data.frame) %>% 
+  bind_rows() %>% 
+  select(LB, BC, count) %>% 
+  mutate(prct = signif(count/sum(count)*100, 2)) %>% 
+  arrange(desc(count))
+```
+
+find barcodes
+```{r}
+I1 <- ShortRead::readFastq(here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "Undetermined_S0_L001_I1_001.fastq.gz")) %>% ShortRead::sread()
+
+I2 <- ShortRead::readFastq(here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "Undetermined_S0_L001_I2_001.fastq.gz")) %>% ShortRead::sread()
+
+BC <- tibble(I1 = as.character(I1),
+             I2 = as.character(I2))
+BC <- 
+BC %>% 
+  group_by(I1,I2) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
+  ungroup() %>% 
+  mutate(n_frac = round(n/sum(n) * 100,2))
+
+BC %>% 
+  left_join(shini_barcodes, by = c("I1" = "i5_rc", "I2" = "i7_rc"))
+```
+
+I1 --> i7_rc
+```{r}
+sum(shini_barcodes$i7_rc %in% BC$I1)
+```
+
+I2 --> i5_rc
+```{r}
+sum(shini_barcodes$i5_rc %in% BC$I2)
+```
+
+
+# demultiplexing by primer
+
+We pooled four different primer pairs
+
+1) COI Primer for Insects (30%)
+2) ITS Primer for Fungi (30%)
+3) 16S Primer for Bacteria (30%)
+4) 16S Primer for Vertebrates (10%)
+
+I will use cutadapt to sort the reads by primer into separate files
+
+
+I use [cutadapt](https://cutadapt.readthedocs.io/en/stable/guide.html) to sort the reads by primer into different files.
+
+setting up variables:
+```{r}
+dm_files <- list.files(here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124","demultiplexed"),
+                        full.names = F)
+
+dm_files <- dm_files[!grepl("unclear_barcode", dm_files)]
+
+forward_raw <- dm_files[grepl("_R1.fastq.gz", dm_files)]
+reverse_raw <- dm_files[grepl("_R2.fastq.gz", dm_files)]
+
+#path to sequences
+path_demulti <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124","demultiplexed")
+
+#minimum length for sequences after trimming (shorter sequences are discarded)
+minlength <- 100
+
+#number of cores to use 
+Cores <- 8
+```
+
+
+
+-g specifies that the primer adaptor is at the 5' end of the read.
+
+> 5’ adapters preceed the sequence of interest
+
+
+### Insects
+
+COI-ArtF12_P5 : GCHCCHGAYATRGCHTTYCCNC
+COI-ArtR22xls_P7: GRTCAAARAADGAWGTATTWARATTWCG
+
+
+```{r}
+Primer <- list()
+Primer$Frwd <- "GCHCCHGAYATRGCHTTYCCNC" 
+Primer$Rev <- "GRTCAAARAADGAWGTATTWARATTWCG" 
+
+Primer$Frwd_rc <- as.character(reverseComplement(DNAStringSet(Primer$Frwd)))
+Primer$Rev_rc <- as.character(reverseComplement(DNAStringSet(Primer$Rev)))
+```
+
+```{r}
+#create directories for primer pair
+Primer_path <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "Insects")
+dir.create(Primer_path)
+```
+
+
+```{r}
+
+cutadapt_out <- vector(mode = "list", length = length(forward_raw))
+names(cutadapt_out) <- gsub("(.+?)_R\\d.+", "\\1", forward_raw)
+
+for (i in seq_along(forward_raw)) {
+  
+  message(paste("processing file", i, "out of", length(forward_raw), sep=" "))
+
+# will sort in separate file below
+temp <- 
+system(
+paste('cutadapt -a ', #replace by your path to cutadapt
+      '"', Primer$Frwd,';required;min_overlap=12','"','...', Primer$Rev_rc,
+      ' -A ', '"',Primer$Rev,';required;min_overlap=12','"', '...', Primer$Rev_rc,
+      ' --discard-untrimmed',
+      ' --minimum-length=', minlength, #minimum length for sequences after trimming
+      ' --cores=', Cores, # Number of cores to use
+      ' -o ', paste(Primer_path, '/', forward_raw[i], sep = ''),
+      ' -p ', paste(Primer_path, '/', reverse_raw[i], sep = ''),
+      paste(' ',path_demulti , '/', forward_raw[i], sep = ''),
+      paste(' ', path_demulti, '/', reverse_raw[i], sep = ''),
+      ' --report=minimal',
+      sep = ''
+      ), intern = TRUE
+)
+
+df <- read.table(text = temp)[2,]
+colnames(df) <- read.table(text = temp)[1,]
+cutadapt_out[[i]] <- df
+}
+
+cutadapt_out_df <- bind_rows(cutadapt_out, .id = "Index")
+
+cutadapt_out_df$Marker <- "Insects"
+
+cutadapt_out_df %>% 
+  write_tsv(here("Data", "iSeq", "cutadapt_stats_inscects.txt"))
+
+cutadapt_out_df
+```
+
+
+
+### Vertebrates
+
+For vertebrates I used primers targeting the mitochondrial vertebrate 16S gene
+The forward Primer has two versions, one targeting birds specifically
+
+mam1 :   GGTTGGGGTGACCTCGGA
+mam1_b : GGTTGGGGCGACCTTGGA
+                 Y     Y
+ve16S : AATCGTTGAACAAACGAAC
+
+
+```{r}
+Primer <- list()
+Primer$Frwd <- "GGTTGGGGYGACCTYGGA" 
+Primer$Rev <- "AATCGTTGAACAAACGAAC" 
+
+Primer$Frwd_rc <- as.character(reverseComplement(DNAStringSet(Primer$Frwd)))
+Primer$Rev_rc <- as.character(reverseComplement(DNAStringSet(Primer$Rev)))
+```
+
+```{r}
+#create directories for primer pair
+Primer_path <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "Vertebrates")
+dir.create(Primer_path)
+```
+
+
+```{r}
+
+cutadapt_out <- vector(mode = "list", length = length(forward_raw))
+names(cutadapt_out) <- gsub("(.+?)_R\\d.+", "\\1", forward_raw)
+
+for (i in seq_along(forward_raw)) {
+  
+  message(paste("processing file", i, "out of", length(forward_raw), sep=" "))
+
+# will sort in separate file below
+temp <- 
+system(
+paste('cutadapt -a ', #replace by your path to cutadapt
+      '"', Primer$Frwd,';required;min_overlap=12','"','...', Primer$Rev_rc,
+      ' -A ', '"',Primer$Rev,';required;min_overlap=12','"', '...', Primer$Rev_rc,
+      ' --discard-untrimmed',
+      ' --minimum-length=', minlength, #minimum length for sequences after trimming
+      ' --cores=', Cores, # Number of cores to use
+      ' -o ', paste(Primer_path, '/', forward_raw[i], sep = ''),
+      ' -p ', paste(Primer_path, '/', reverse_raw[i], sep = ''),
+      paste(' ',path_demulti , '/', forward_raw[i], sep = ''),
+      paste(' ', path_demulti, '/', reverse_raw[i], sep = ''),
+      ' --report=minimal',
+      sep = ''
+      ), intern = TRUE
+)
+
+df <- read.table(text = temp)[2,]
+colnames(df) <- read.table(text = temp)[1,]
+cutadapt_out[[i]] <- df
+}
+
+cutadapt_out_df <- bind_rows(cutadapt_out, .id = "Index")
+
+cutadapt_out_df$Marker <- "Vertebrates"
+
+cutadapt_out_df %>% 
+  write_tsv(here("Data", "iSeq", "cutadapt_stats_vertebrates.txt"))
+
+cutadapt_out_df
+```
+
+### Bacteria
+
+515F : GTGYCAGCMGCCGCGGTAA
+806R : GGACTACNVGGGTWTCTAAT
+
+
+```{r}
+Primer <- list()
+Primer$Frwd <- "GTGYCAGCMGCCGCGGTAA" 
+Primer$Rev <- "GGACTACNVGGGTWTCTAAT" 
+
+Primer$Frwd_rc <- as.character(reverseComplement(DNAStringSet(Primer$Frwd)))
+Primer$Rev_rc <- as.character(reverseComplement(DNAStringSet(Primer$Rev)))
+```
+
+```{r}
+#create directories for primer pair
+Primer_path <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "Bacteria")
+dir.create(Primer_path)
+```
+
+
+```{r}
+
+cutadapt_out <- vector(mode = "list", length = length(forward_raw))
+names(cutadapt_out) <- gsub("(.+?)_R\\d.+", "\\1", forward_raw)
+
+for (i in seq_along(forward_raw)) {
+  
+  message(paste("processing file", i, "out of", length(forward_raw), sep=" "))
+
+# will sort in separate file below
+temp <- 
+system(
+paste('cutadapt -a ', #replace by your path to cutadapt
+      '"', Primer$Frwd,';required;min_overlap=12','"','...', Primer$Rev_rc,
+      ' -A ', '"',Primer$Rev,';required;min_overlap=12','"', '...', Primer$Rev_rc,
+      ' --discard-untrimmed',
+      ' --minimum-length=', minlength, #minimum length for sequences after trimming
+      ' --cores=', Cores, # Number of cores to use
+      ' -o ', paste(Primer_path, '/', forward_raw[i], sep = ''),
+      ' -p ', paste(Primer_path, '/', reverse_raw[i], sep = ''),
+      paste(' ',path_demulti , '/', forward_raw[i], sep = ''),
+      paste(' ', path_demulti, '/', reverse_raw[i], sep = ''),
+      ' --report=minimal',
+      sep = ''
+      ), intern = TRUE
+)
+
+df <- read.table(text = temp)[2,]
+colnames(df) <- read.table(text = temp)[1,]
+cutadapt_out[[i]] <- df
+}
+
+cutadapt_out_df <- bind_rows(cutadapt_out, .id = "Index")
+
+cutadapt_out_df$Marker <- "Bacteria"
+
+cutadapt_out_df %>% 
+  write_tsv(here("Data", "iSeq", "cutadapt_stats_bacteria.txt"))
+
+cutadapt_out_df
+```
+
+### Fungi
+
+```{r}
+ITS_primer <- read_xlsx(here("Data", "Fungal_primer_Schlegel.xlsx"))
+```
+
+we seqeuence wit a mix of primers, we specify the adapters in seperate files:
+
+```{r}
+ITS_fwrd <- 
+ITS_primer %>% 
+  filter(Primer_dir == "Fwrd") %>% 
+  pull(`primer sequence`) %>% 
+  unique() %>% 
+  DNAStringSet()
+
+fwrd_search <- 
+paste(ITS_fwrd, ";required;min_overlap=12","...",reverseComplement(ITS_fwrd), sep = "")
+
+paste(">primer", 1:length(fwrd_search), sep = "_") %>% 
+  rbind(., fwrd_search) %>% 
+  c() %>% 
+  write_lines(here("Data", "ITS_Primer_fwrd.fasta"))
+
+
+ITS_rev <- 
+ITS_primer %>% 
+  filter(Primer_dir == "Rev") %>% 
+  pull(`primer sequence`) %>% 
+  unique() %>% 
+  DNAStringSet()
+
+rev_search <- 
+paste(ITS_rev, ";required;min_overlap=12","...",reverseComplement(ITS_rev), sep = "")
+
+paste(">primer", 1:length(rev_search), sep = "_") %>% 
+  rbind(., rev_search) %>% 
+  c() %>% 
+  write_lines(here("Data", "ITS_Primer_rev.fasta"))
+```
+
+```{r}
+#create directories for primer pair
+Primer_path <- here("Data", "iSeq", "20230913_FS10000965_17_BSB09423-1124", "Fungi")
+dir.create(Primer_path)
+```
+
+
+```{r}
+
+cutadapt_out <- vector(mode = "list", length = length(forward_raw))
+names(cutadapt_out) <- gsub("(.+?)_R\\d.+", "\\1", forward_raw)
+
+for (i in seq_along(forward_raw)) {
+  
+  message(paste("processing file", i, "out of", length(forward_raw), sep=" "))
+
+# will sort in separate file below
+temp <- 
+system(
+paste('cutadapt -a ', #replace by your path to cutadapt
+      '"', 
+      'file:',here("Data", "ITS_Primer_fwrd.fasta"),
+      '"',
+      ' -A ', 
+      '"',
+      'file:', here("Data", "ITS_Primer_rev.fasta"),
+      '"', 
+      ' --discard-untrimmed',
+      ' --minimum-length=', minlength, #minimum length for sequences after trimming
+      ' --cores=', Cores, # Number of cores to use
+      ' -o ', paste(Primer_path, '/', forward_raw[i], sep = ''),
+      ' -p ', paste(Primer_path, '/', reverse_raw[i], sep = ''),
+      paste(' ',path_demulti , '/', forward_raw[i], sep = ''),
+      paste(' ', path_demulti, '/', reverse_raw[i], sep = ''),
+      ' --report=minimal',
+      sep = ''
+      ), intern = TRUE
+)
+
+df <- read.table(text = temp)[2,]
+colnames(df) <- read.table(text = temp)[1,]
+cutadapt_out[[i]] <- df
+}
+
+cutadapt_out_df <- bind_rows(cutadapt_out, .id = "Index")
+
+cutadapt_out_df$Marker <- "Fungi"
+
+cutadapt_out_df %>% 
+  write_tsv(here("Data", "iSeq", "cutadapt_stats_fungi.txt"))
+
+cutadapt_out_df
+```
+# count PhiX
+
+```{r}
+dir.create(here("Data", "iSeq", "bbduk_stats"))
+
+lapply(seq_along(forward_raw), function(x)
+{
+
+  system(paste("/Applications/bbmap/bbduk.sh in1=",
+               paste(path_demulti , '/', forward_raw[x], sep = ''),
+               " in2=",
+               paste(path_demulti , '/', reverse_raw[x], sep = ''),
+               " stats=",
+               paste(here("Data", "iSeq", "bbduk_stats"),
+                     paste("bbduk", x, ".txt", sep = ""), sep = "/"),
+               " maxns=0",
+               " ref=/Applications/bbmap/resources/phix174_ill.ref.fa.gz k=20 hdist=2",
+               " threads=6",
+                sep = ""
+               ), intern = TRUE)
+
+})
+```
+
+
+```{r}
+
+bbduk_files <- list.files(here("Data", "iSeq", "bbduk_stats"), full.names = TRUE)
+
+phix = lapply(bbduk_files, function(x){
+  temp <- read_lines(x)
+  strsplit(temp[3], "\t")[[1]][2]
+}) %>% unlist() %>% as.numeric
+
+bbduk_stat <- tibble(Index = gsub("(.+?)_R\\d.+", "\\1", forward_raw),
+                     phiX = phix)
+
+```
+#size distribution
+
+```{r}
+
+Adapter_cont <- 
+lapply(forward_raw, function(x){
+  
+  ShortRead::readFastq(paste(path_demulti, x, sep = "/")) %>% 
+    ShortRead::sread(test) %>% 
+    as.character() %>% 
+    grepl("GGGGG+$", .) %>% 
+    sum()
+  
+})
+
+names(Adapter_cont) <- gsub("(.+?)_R\\d.+", "\\1", forward_raw)
+
+Adapter_cont_df <- 
+  Adapter_cont %>% bind_rows(.id = "Index") %>% 
+  pivot_longer(cols = everything(), names_to = "Index", values_to = "Adapter_reads")
+```
+
+# distribution of reads
+
+```{r}
+ca_insect <- read_tsv(here("Data", "iSeq", "cutadapt_stats_inscects.txt"))
+
+ca_vert <- read_tsv(here("Data", "iSeq", "cutadapt_stats_vertebrates.txt"))
+
+ca_bac <- read_tsv(here("Data", "iSeq", "cutadapt_stats_bacteria.txt")) 
+
+ca_fungi <- read_tsv(here("Data", "iSeq", "cutadapt_stats_fungi.txt"))
+
+read_stat <- 
+list(ca_insect, ca_vert, ca_bac, ca_fungi) %>% 
+  bind_rows() %>% 
+  select(Index, out_reads, Marker) %>% 
+  pivot_wider(names_from = Marker, values_from = out_reads) %>% 
+  left_join(select(ca_bac, Index, in_reads, too_short)) %>% 
+  left_join(bbduk_stat) %>% 
+  mutate(accounted = (Insects + Vertebrates + Bacteria + Fungi + phix)) %>% 
+  mutate(missing_prct = 100-round(accounted/in_reads*100,1))
+
+write_tsv(read_stat, here("Data", "iSeq", "readStat.txt"))
+```
+
+```{r}
+read_stat <- read_tsv(here("Data", "iSeq", "readStat.txt"))
+```
+
+```{r}
+read_stat %>% 
+  mutate(unaccounted = in_reads - accounted) %>% 
+  select(-accounted, -missing_prct, -in_reads) %>% 
+  pivot_longer(!one_of(c("Index", "in_reads")),
+               names_to = "Read_type", values_to = "reads") %>% 
+  group_by(Read_type) %>% 
+  summarise(reads = sum(reads)) %>% 
+  mutate(reads = reads/sum(reads)*100) %>% 
+  mutate(Read_type = factor(Read_type, levels = c("Bacteria", "Fungi", 
+                                                  "Insects", "Vertebrates", "phiX", "too_short", "unaccounted"))) %>% 
+  ggplot(aes(x = 1, y = reads, fill = Read_type))+
+  geom_bar(position = "dodge", stat = "identity")+
+  scale_fill_brewer(palette = "Set1")+
+  theme_bw()
+```
+```{r}
+read_stat %>% 
+  summarise(across(one_of(c("Insects", "Vertebrates", "Bacteria", "Fungi")), median))
+```
+# read lengths
+
+```{r}
+readsR1 <-  ShortRead::readFastq(paste(path_demulti, forward_raw[1], sep = "/")) %>% 
+  ShortRead::sread()
+
+readsR2 <-  ShortRead::readFastq(paste(path_demulti, forward_raw[2], sep = "/")) %>% 
+  ShortRead::sread()
+
+readsR2 %>% as.character() %>% gsub("(.+?)[GA]{5}[GA]+$","\\1", .) %>% nchar() %>% 
+table() %>% 
+  as.data.frame() %>%
+  dplyr::rename(Var1 = 1) %>% 
+  mutate(across(one_of("Var1", "Freq"), function(x) as.numeric(as.character(x)))) %>% 
+  arrange(desc(Freq)) %>% 
+  mutate(prct = Freq / sum(Freq)*100) %>% 
+  mutate(rank = 1:n()) %>% 
+  mutate(Label = case_when( rank < 6 ~ paste(Var1, "(",round(prct,1), " %",")", sep = ""),
+                   TRUE ~ NA_character_)) %>% 
+    ggplot(aes(x = Var1, y = Freq))+
+  geom_line(colour = "darkgrey", alpha = 0.5)+
+  geom_text_repel(aes(label = Label))+
+  geom_point(data = ~filter(.x, !is.na(Label)), colour = "red", size = 0.5)+
+  theme_bw()+
+  scale_x_continuous(limits = c(0,500))
+```
+
+```{r}
+temp <- 
+system(
+paste('cutadapt -g ', #replace by your path to cutadapt
+      '"','GGGGGGGGGG',';min_overlap=10','"',
+      ' --discard-untrimmed',
+      ' --minimum-length=', 0, #minimum length for sequences after trimming
+      ' --cores=', Cores, # Number of cores to use
+      ' -o ', paste(path_demulti, '/', "test1.fastq", sep = ''),
+      ' -p ', paste(path_demulti, '/', "test2.fastq", sep = ''),
+      paste(' ',path_demulti , '/', forward_raw[1], sep = ''),
+      paste(' ', path_demulti, '/', reverse_raw[1], sep = ''),
+      ' --report=minimal',
+      sep = ''
+      ), intern = TRUE
+)
+
+
+df <- read.table(text = temp)[2,]
+colnames(df) <- read.table(text = temp)[1,]
+
+df
+
+readsR1 <-  ShortRead::readFastq(paste(path_demulti, '/', "test1.fastq", sep = '')) %>% 
+  ShortRead::sread()
+
+{150-width(readsR1)} %>% 
+table() %>% 
+  as.data.frame() %>%
+  dplyr::rename(Var1 = 1) %>% 
+  mutate(across(one_of("Var1", "Freq"), function(x) as.numeric(as.character(x)))) %>% 
+  arrange(desc(Freq)) %>% 
+  mutate(prct = Freq / sum(Freq)*100) %>% 
+  mutate(rank = 1:n()) %>% 
+  mutate(Label = case_when( rank < 6 ~ paste(Var1, "(",round(prct,1), " %",")", sep = ""),
+                   TRUE ~ NA_character_)) %>% 
+    ggplot(aes(x = Var1, y = Freq))+
+  geom_line(colour = "darkgrey", alpha = 0.5)+
+  geom_text_repel(aes(label = Label))+
+  geom_point(data = ~filter(.x, !is.na(Label)), colour = "red", size = 0.5)+
+  theme_bw()+
+  scale_x_continuous(limits = c(0,500))
+```
+

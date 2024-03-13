@@ -1,0 +1,125 @@
+---
+title: "DNA Conc. from Air filter comparision"
+output: html_notebook
+---
+
+```{r}
+library(readr)
+library(readxl)
+library(googlesheets4)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ggh4x)
+library(ggrepel)
+library(here)
+```
+
+
+```{r}
+DNAC <- read_xlsx(here("Data",  "dsDNA-QubitAssay_384 (Modified)_20230614_154643_p814.xlsx"), range = "A45:U61")
+
+DNAC <- 
+DNAC %>% 
+  dplyr::rename(row = 1) %>% 
+  pivot_longer(-row,
+               names_to = "col",
+               values_to = "OD")
+```
+
+```{r}
+
+WellP <- 
+  read_xlsx(here("Data", "dsDNA-QubitAssay_384 (Modified)_20230614_154643_p814.xlsx"), range = "A70:U86") %>% 
+  dplyr::rename(row = 1) %>% 
+  pivot_longer(-row,
+               names_to = "col",
+               values_to = "Sample_names") 
+
+googlesheet_url <- "https://docs.google.com/spreadsheets/d/1GKWzD0q683oH3I_i5ueulbf4P4Q-9-a9YPbdyUZyF2A/edit#gid=1771030448"
+
+Meta <- read_sheet(googlesheet_url, sheet = "Sample_data_corr")
+  
+```
+
+```{r}
+Stand <- 
+  DNAC %>% 
+  filter(col == "20") %>% 
+  arrange(col) %>% 
+  mutate(Conc = rep(c(10, 5, 2, 1, 0.5, 0.25, 0.1, 0), each = 2)) %>% 
+  mutate(rep = rep(c("rep1","rep2"), 8))
+
+Stand %>% 
+  select(-row) %>% 
+  pivot_wider(names_from = rep, values_from = OD) %>% 
+  ggplot(aes(x = rep1, y = rep2))+
+  geom_point()+
+  geom_abline(slope = 1)+
+  scale_x_log10()+
+  scale_y_log10()
+```
+
+
+```{r}
+Stand %>% 
+  filter(Conc <= 2) %>% 
+  ggplot(aes(x = Conc, y = OD))+
+  geom_point()+
+  geom_smooth(method = "lm", formula=y~x-1)
+
+Stand_lm <- lm(Conc ~ 0 + OD, filter(Stand, Conc <= 2))
+```
+
+```{r}
+
+DNAC <- 
+DNAC %>% 
+  filter(as.numeric(col) < 20) %>% 
+  left_join(WellP) %>% 
+  select(-col, -row) %>% 
+  left_join(Meta) %>% 
+  mutate(DNAC = predict.lm(Stand_lm, .))
+
+#Blank <- 
+#  DNAC %>% 
+#  filter(Name == "PCR_Blank")
+
+  
+DNAC %>% 
+  filter(!is.na(Sample_names)) %>% 
+  mutate(yield = DNAC * 200) %>% 
+  filter(Sample_names != "1DB30_1") %>% 
+  # mutate(Sampler = case_when(grepl("BLANK", Sample_names) ~ "Extraction Blanks",
+  #                         TRUE ~ Sampler)) %>% 
+  # mutate(Type = case_when(grepl("BLANK", Sample_names) ~ "field_control",
+  #                         TRUE ~ Type)) %>% 
+  group_by(Sample_names, Sites, Sampler, duration, Type) %>% 
+  summarise(yield = mean(yield)) %>%
+  mutate(Type = factor(Type, levels = c("active", "passive", "field_control"),
+                       labels = c("Active Sampler", "Passive Sampler", "Field Controls"))) %>% 
+  filter(Type %in% c("Active Sampler", "Passive Sampler")) %>% 
+  filter(Sampler != "Drone") %>% 
+  mutate(Sampler = factor(Sampler, levels= unique(.$Sampler)[c(5,2,1,3,6,4,8,7)])) %>%
+  ggplot(aes(x = Sampler,  y = yield, colour = duration))+
+  geom_point(position = position_dodge(width = 0.8),
+             alpha = 0.8, size = 2) +
+  facet_grid(.~Type, scales = "free_x", space = "free")+
+  force_panelsizes(cols = c(1.5, 0.5,0.8)) +
+  theme_bw()+
+  scale_colour_brewer(palette = "Set1", na.value="grey")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")+
+  labs(y = "DNA Conc (ng)", x = "")+
+  scale_y_log10(breaks = c(seq(1,8,2), seq(10,50,10), seq(100, 400, 100)))+
+  ggtitle("DNA Concentrations")+
+  NULL
+
+  #ggsave(here("Figures", "DNA_concentrations.pdf"), width = 8, height = 5)
+```
+
+
+```{r}
+write_tsv(DNAC, here("Data", "DNA_conc_air_sampler_comp.txt"))
+```
+

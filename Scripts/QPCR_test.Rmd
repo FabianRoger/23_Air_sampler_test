@@ -1,0 +1,49 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(googlesheets4)
+library(tidyr)
+library(dplyr)
+library(clipr)
+```
+
+
+```{r}
+googlesheet_url <- "https://docs.google.com/spreadsheets/d/1GKWzD0q683oH3I_i5ueulbf4P4Q-9-a9YPbdyUZyF2A/edit#gid=1771030448"
+
+
+Meta <- read_sheet(googlesheet_url, sheet = "Sample_data")
+
+DNAC <- read_tsv(here("Data", "DNA_conc_air_sampler_comp.txt")) %>% 
+  select(Sample_names, DNAC)
+```
+
+For each Sampler and sampling duration, choose the sample with the median DNA Conc. 
+
+I also include all extraction Blanks
+```{r}
+
+qPCR_samples <- 
+Meta %>% 
+  filter(!is.na(duration)) %>% 
+  left_join(DNAC) %>% 
+  group_by(Sampler, duration) %>% 
+  arrange(Sampler, duration, DNAC) %>% 
+  slice(floor(n()/2)) %>% 
+  select(Sample_names, Sites, Sampler, duration, DNAC, Plate, well) %>% 
+  arrange(Plate, well) %>% 
+  bind_rows(filter(Meta,grepl("BLANK", Sample_names)))
+  
+
+qPCR_samples %>% 
+  ungroup() %>% 
+  select(Sample_names) %>% 
+  mutate(row = rep(LETTERS[c(1:8)], 12)[1:n()],
+         col = rep(1:12, each = 8)[1:n()]) %>% 
+  pivot_wider(names_from = col, values_from = Sample_names) %>% 
+  write_clip()
+```
+

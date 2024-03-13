@@ -1,0 +1,212 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(readr)
+library(purrr)
+library(ggplot2)
+library(tidyr)
+library(here)
+library(googlesheets4)
+library(qpcR)
+
+select <- dplyr::select
+```
+
+
+
+```{r}
+HB <- read_tsv(here("Data", "qPCR", "p814_air_sampler_comp_vert.txt"))
+
+HB <- 
+HB %>% 
+  dplyr::select(!starts_with("X")) %>% 
+  mutate(Cycle = 1:n()) %>% 
+  pivot_longer(-Cycle,
+    names_to = "Well",
+               values_to = "Fluo") %>% 
+  mutate(Well = gsub("(\\w\\d+).+", "\\1", Well))
+```
+
+
+```{r}
+G_url <- "https://docs.google.com/spreadsheets/d/1GKWzD0q683oH3I_i5ueulbf4P4Q-9-a9YPbdyUZyF2A/edit#gid=1114049890"
+
+Plate <- read_sheet(G_url, sheet = "qPCR", range = "A3:L11")
+
+Plate <- 
+Plate %>% 
+  pivot_longer(-row, names_to = "col", values_to = "Sample") %>% 
+  mutate(Well = paste(row, col, sep = "")) %>% 
+  dplyr::select(Sample, Well) %>% 
+  filter(!is.na(Sample))
+```
+
+
+```{r}
+Meta <- 
+  Plate %>% 
+  select(Sample) %>% 
+  mutate(Name = gsub("(.+?)_.+", "\\1", Sample),
+         Dillution = as.numeric(gsub(".+?_(.+)", "\\1", Sample)),
+         Type = case_when(grepl("POS", Sample) ~ "Pos_control",
+                          grepl("BLANK", Sample) ~ "Extr_blank",
+                          grepl("PCR", Sample) ~ "PCR_neg",
+                          TRUE ~ "Sample")) 
+```
+
+```{r}
+DNAC <- read_tsv(here("Data", "DNA_conc_air_sampler_comp.txt"))
+```
+
+
+```{r}
+HB <- 
+HB %>% 
+  left_join(Plate) %>% 
+  left_join(Meta) %>% 
+  filter(Sample != "Exclude") %>% 
+  filter(!is.na(Sample)) %>%
+  group_by(Sample) %>% 
+  mutate(Fluo = Fluo+abs(min(Fluo))) 
+
+HB %>% 
+  ggplot(aes(x = Cycle, Fluo, colour = Type))+
+  geom_line(aes(group = Sample))+
+  theme_bw()+
+  scale_colour_brewer(palette = "Set1")+
+  geom_hline(yintercept = 10, linetype = "dashed", colour = "black")
+
+```
+```{r}
+HB %>% 
+  mutate(Dillution = factor(Dillution, levels = c("1", "2", "5", "10"))) %>% 
+  filter(!is.na(Dillution)) %>% 
+  ggplot(aes(x = Cycle, Fluo, colour = Dillution))+
+  geom_line(aes(group = Sample))+
+  facet_wrap(~Name)+
+  theme_bw()+
+  scale_colour_brewer(palette = "Set1")+
+  geom_hline(yintercept = 10, linetype = "dashed", colour = "black")
+```
+
+```{r}
+PCR_fit <- 
+HB %>% 
+  group_by(Sample) %>% 
+  nest() %>% 
+  mutate(pcrfit = map(data, ~pcrfit(cyc = 1, fluo = 3, data = .))) %>% 
+  mutate(CT = map(pcrfit, ~predict(.x, 
+                                   newdata = tibble(Fluo = c(20)),
+                                   which = "x",
+                                   interval = c("prediction"),
+                                   level = 0.95)))
+```
+```{r}
+PCR_fit %>% 
+  unnest(CT) %>% 
+  left_join(Meta) %>% 
+  filter(Type == "Sample") %>% 
+  arrange(Name, Dillution, ) %>% 
+  ggplot(aes(x = as.factor(Dillution), y= Prediction))+
+  geom_line(aes(group = Name), colour = "grey", size = 0.5, 
+            position = position_jitter(width = 0.1, seed = 0), alpha = 0.3)+
+  geom_point(position = position_jitter(width = 0.1, seed = 0), alpha = 0.4)+
+  stat_summary(geom = "pointrange", fun.data = "mean_cl_boot")+
+  theme_minimal()+
+  labs(y = "CT value for fluorescence of 10", x = "Dilution")
+```
+
+```{r}
+PCR_fit %>% 
+  unnest(CT) %>% 
+ # mutate(CT = c(10)) %>%
+  left_join(Meta) %>% 
+  filter(grepl("Sample|Pos_control", Type)) %>% 
+  ungroup() %>% 
+  select(Name, Prediction, Dillution) %>% 
+  pivot_wider(names_from = Dillution, values_from = Prediction) %>% 
+  mutate(D1_D2 = `2`-`1`,
+         D2_D5 = `5` - `2`,
+         D10_D5 = `10` - `5`) %>% 
+  select(Name, starts_with("D")) %>% 
+  pivot_longer(-Name, names_to = "Dillution", values_to = "CT_diff") %>% 
+  mutate(Dillution = factor(Dillution, levels = c("D1_D2", "D2_D5", "D10_D5"))) %>% 
+  mutate(CT_diff_exp = rep(c(1, log(5/2,2), 1), 17)) %>% 
+  left_join(select(Meta, -Dillution)) %>% 
+   ggplot(aes( x = Dillution, y = CT_diff))+
+  geom_point(position = position_jitter(width = 0.1), alpha = 0.5)+
+  geom_point(data = . %>% filter(Type == "Pos_control"), colour = "orange", size = 3)+
+  stat_summary(geom = "pointrange", fun.data = "mean_cl_boot", colour = "red", size = 0.25)+
+  geom_segment(data = . %>% select(Dillution, CT_diff_exp) %>% distinct(), 
+               aes(x = as.numeric(Dillution)-0.15,
+                   xend = as.numeric(Dillution)+0.15,
+                   y = CT_diff_exp,
+                   yend = CT_diff_exp), colour = "darkgreen")+
+  geom_hline(yintercept = 0)+
+  theme_minimal()
+  
+```
+
+
+
+
+
+
+
+
+```{r}
+PCR_fit %>% 
+  unnest(CT) %>% 
+  left_join(Meta) %>% 
+  ungroup %>% 
+  filter(Type == "Sample") %>% 
+  select(Name, Prediction, Dillution) %>% 
+  dplyr::rename(Sample_names = Name) %>% 
+  left_join(DNAC) %>% 
+  ggplot(aes(x = log(DNAC,2), y = Prediction, colour = Sampler, shape = duration))+
+  geom_point()+
+  geom_smooth(aes(group = 1), se = F, method = "lm", size = 0.3, colour = "darkred")+
+  facet_grid(~Dillution)+
+  theme_minimal()+
+  theme(legend.position = "bottom", legend.box="vertical", legend.margin=margin())+
+  scale_color_brewer(palette = "Set1")
+ 
+
+```
+
+```{r}
+HB %>% 
+  filter(Dillution == 5 | is.na(Dillution)) %>% 
+  ggplot(aes(x = Cycle, Fluo, colour = Type))+
+  geom_line(aes(group = Sample))+
+#  facet_wrap(~Name)+
+  theme_bw()+
+  scale_colour_brewer(palette = "Set1")+
+  geom_hline(yintercept = 10, linetype = "dashed", colour = "black")+
+  geom_vline(xintercept = 45, linetype = 2)+
+  geom_label(aes(x = 40, y = 80, label = "45 cycles"), colour = "black")+
+  ggtitle("Dilution 1:5")
+
+```
+
+choose Samples for Index PCR analysis 
+
+```{r}
+
+PCR_fit %>% 
+  unnest(CT) %>% 
+  left_join(Meta) %>% 
+  filter(Type == "Sample") %>% 
+  filter(Dillution == 2 & Type == "Sample") %>% 
+  ungroup() %>% 
+  arrange(Prediction) %>% 
+  dplyr::slice(c(floor(0.75*n()),floor(n()/2),floor(0.25*n())))
+  
+```
+
+
+

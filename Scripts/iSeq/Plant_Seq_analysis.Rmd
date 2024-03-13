@@ -1,0 +1,594 @@
+---
+title: "Vertebrate 16S"
+author: "Fabian Roger"
+date: "`r Sys.Date()`"
+output: html_notebook
+---
+
+```{r, message = FALSE}
+
+#data handling
+library(dplyr)
+library(tidyr)
+library(readr)
+library(here)
+library(readxl)
+library(stringr)
+library(googlesheets4)
+
+#plotting
+library(ggplot2)
+library(gridExtra)
+library(ggrepel)
+
+
+#seqeunce analysis
+library(dada2)
+library(ShortRead)
+library(DECIPHER)
+library(taxize)
+library(rgbif)
+library(phyloseq)
+
+#library(knitr)
+
+#parallel processing
+library(future.apply) 
+library(furrr)
+#library(rgbif)
+#library(ggtree)
+#library(ape)
+
+
+#library(decontam)
+#library(googlesheets4)
+#library(lulu)
+#library(bold)
+
+#helper functions for sequence analyis
+source(here("Scripts", "Seq_analysis_helper.R"))
+```
+
+```{r}
+sessionInfo()
+```
+
+
+#dada2
+This script follows the [DADA2 ITS Tutorial (1.8)](https://benjjneb.github.io/dada2/ITS_workflow.html) 
+The original article can be found [here](http://rdcu.be/ipGh)
+
+The script was written with DADA2 version 1.18.0
+
+The data are demultiplexed (see `Demultiplexing.Rmd`)
+
+#set-up
+
+here("Data", "iSeq", "20231128_FS10000965_18_BSB09423-0723", "phenix_config_file.json")
+
+```{r}
+run_name <- "20231128_FS10000965_18_BSB09423-0723"
+primer <- "Plants"
+
+#path to primer demultiplexed files
+trimmed_path <- here("Data", "iSeq", run_name, primer)
+```
+
+#Filter
+
+filter trimmed reads
+```{r}
+filterpath <- here("Data", "iSeq", run_name, primer, "filtered")
+dir.create(filterpath)
+```
+
+
+```{r, "sort fwrd and rev", cache=TRUE}
+
+fnFs <- sort(list.files(trimmed_path, pattern="_R1.fastq.gz", full.names = TRUE)) # Just the forward read files
+fnRs <- sort(list.files(trimmed_path, pattern="_R2.fastq.gz", full.names = TRUE)) # Just the reverse read files
+
+# Get sample names from forward read filenames
+sample.names <- 
+   sapply(fnFs, function(x) gsub(".+Plants/(.+)_R1.fastq.gz", "\\1", x), USE.NAMES = FALSE)
+
+```
+
+###quality profiles
+
+Visualize the quality profile of the forward reads
+
+```{r, "plot quality of reads", cache=TRUE}
+# plot one forward and one reverse read in the rapport
+plotQualityProfile(fnFs[152])+
+  scale_y_continuous(limits = c(0,40))+
+  scale_x_continuous(breaks = seq(0,300, 20))+
+  geom_hline(yintercept = 30, colour = "grey", linetype = "dashed")+
+  geom_hline(yintercept = 20, colour = "grey", linetype = "dashed")+
+  labs(title = paste(sample.names[1], "foward", sep = " - " ))
+
+plotQualityProfile(fnRs[152])+
+  scale_y_continuous(limits = c(0,40))+
+  scale_x_continuous(breaks = seq(0,300, 20))+
+  geom_hline(yintercept = 30, colour = "grey", linetype = "dashed")+
+  geom_hline(yintercept = 20, colour = "grey", linetype = "dashed")+
+  labs(title = paste(sample.names[1], "reverse", sep = " - "))
+```
+
+
+
+The quality of the forwards reads is very high, throughout the full length of the read.  The quality of the reverse read is equally high
+
+
+The filtering parameters we’ll use are standard (however we can allow for more expected errors as DADA is [robust to low quality sequences](https://twitter.com/bejcal/status/771010634074820608) )
+
++ maxN=0 (DADA2 requires no Ns)
++ truncQ=2 
++ maxEE=c(2,2)
+
+The `maxEE` parameter sets the maximum number of “expected errors” allowed in a read. 
+
+We use the `fastqPairedFilter` function to jointly filter the forward and reverse reads.
+
+###filter and trim
+```{r}
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(filterpath, paste0(sample.names, "_F_filt.fastq.gz"))
+
+names(filtFs) <- sample.names
+```
+
+
+```{r}
+
+fwrd_trim <- 
+out <- filterAndTrim(fnFs, filtFs,
+                     truncLen = 0,
+                     maxN=0,
+                     maxEE=c(2),
+                     truncQ=2,
+                     rm.phix=TRUE,
+                     compress=TRUE, multithread=6) 
+out_df <- 
+out %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column(var = "Sample_name") %>% 
+  mutate(Sample_name = gsub("_R1.+", "", Sample_name)) %>% 
+  mutate(prct = signif(reads.out / reads.in * 100, 2)) %>% 
+  mutate(Sample_name = gsub("(.+?)_S.+.fastq.gz", "\\1", Sample_name))
+
+write_tsv(out_df, here("Data", "iSeq", run_name, primer, "ee_filter_stats.txt"))
+
+out_df
+```
+
+```{r}
+filt <- list.files(filterpath, full.names = T)
+
+filtFs <- filt[grepl("*_F_filt.fastq.gz", filt)]
+names(filtFs) <- gsub(".+filtered/(.+?)_F.+", "\\1", filtFs)
+```
+
+
+# Learn errors
+```{r}
+errF <- learnErrors(filtFs, multithread=6, randomize = TRUE)
+```
+
+
+```{r, cache=TRUE}
+plotErrors(errF, nominalQ=TRUE)
+```
+
+# Denoise
+```{r}
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
+```
+
+```{r}
+
+denoise_stat <- 
+sapply(dadaFs, function(x) sum(getUniques((x)))) %>% 
+  data.frame(denoised = .) %>% 
+  tibble::rownames_to_column(var = "Sample_name") %>% 
+  left_join(select(out_df, Sample_name, reads.out)) %>% 
+  mutate(prct = round(denoised / reads.out*100, 2))
+  
+write_tsv(denoise_stat, here("Data", "iSeq", run_name, primer, "denoise_stat.txt"))
+
+denoise_stat
+```
+
+# Merge
+Merge paired reads
+Spurious sequence variants are further reduced by merging overlapping reads. 
+
+
+# Construct sequence table:
+
+```{r, "Seqeunce table"}
+seqtab <- makeSequenceTable(dadaFs)
+dim(seqtab)
+```
+
+
+# Chimeras
+
+```{r, "Chimera removal", cache=TRUE}
+
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+
+write_rds(seqtab.nochim, here("Data", "iSeq", run_name,
+                              primer, "seqtab.nochim.rds"))
+
+dim(seqtab.nochim)
+
+seqtab.nochim <- read_rds(here("Data", "iSeq", run_name,
+                              primer, "seqtab.nochim.rds"))
+```
+
+```{r}
+chimera_stat <- 
+tibble(Sample_name = rownames(seqtab),
+       before = rowSums(seqtab),
+       after = rowSums(seqtab.nochim),
+       prct = round(after/before*100,2))
+
+chimera_stat %>% 
+write_tsv(here("Data", "iSeq", run_name, primer, "Chimera_stat.txt"))
+
+chimera_stat
+```
+
+
+percentage of Chimeric reads
+
+```{r}
+(1-(sum(seqtab.nochim)/sum(seqtab)))*100
+```
+
+percentage of Chimeric ASVs
+
+```{r}
+(1-(ncol(seqtab.nochim)/ncol(seqtab)))*100
+```
+
+
+# Length filtering
+
+check ASV length
+
+```{r}
+data.frame(table(nchar(colnames(seqtab.nochim)))) %>% 
+  ggplot( aes(x = Var1, y = Freq))+
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = -90))+
+  labs(x = "length in bp", title = "histogramm of merged sequence lenghts")
+```
+
+###export raw ASV and fasta file
+
+export ASVs to Fasta file 
+
+```{r}
+seqs <- DNAStringSet(colnames(seqtab.nochim))
+
+names(seqs) <- paste("seq", 
+                             formatC(1:length(seqs), flag = "0",
+                                     width = nchar(length(seqs))),
+                             sep = "_")
+
+writeXStringSet(seqs, here("Data", "iSeq", run_name, primer, "ASVs.fasta"), format = "fasta")
+
+#seqs <- readDNAStringSet(here("Data", run_name, primer, "ASVs.fasta"))
+
+ASV <- 
+seqtab.nochim %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column(var = "Sample") %>% 
+  `colnames<-`(c("Sample", names(seqs))) 
+  
+write_tsv(ASV, here("Data", "iSeq", run_name, primer, "ASVs.txt"))
+#ASV <- read_tsv(here("Data","iSeq", run_name, primer, "ASVs.txt"))
+```
+
+
+###Swarm3
+
+We use swarm for single linkage clustering of the ASVs. The method is described here:
+
+> Mahé F, Rognes T, Quince C, Vargas C de, Dunthorn M. 2015 Swarm v2: highly-scalable and high-resolution amplicon clustering. PeerJ 3, e1420. (doi:10.7717/peerj.1420)
+
+The github is [here](https://github.com/torognes/swarm)
+
+
+Swarm needs a fasta file with size annotation as input. It just separates the size by a "_"
+
+```{r}
+seqs_size <- 
+  colSums(ASV[,-1]) %>% 
+  data.frame(size = .) %>% 
+  tibble::rownames_to_column(var = "seq") %>% 
+  mutate(new_name = gsub("_", "", seq)) %>% 
+  mutate(new_name = paste(new_name, size, sep = "_"))
+
+#make sure sequences are in correct order
+seqs <- seqs[seqs_size$seq]
+
+#rename
+names(seqs) <- seqs_size$new_name
+
+#export
+writeXStringSet(seqs, here("Data", "iSeq", run_name, primer, "ASVs_swarm_in.fasta"), format = "fasta")
+
+```
+
+
+run swarm.
+
+we use the vsearch output as we already have code to convert vsearch output into merged OTU tabel
+
+```{r}
+tmp <- 
+system(paste(
+  "/Applications/swarm-3.1.0/bin/swarm -d 1 -f -t 8 -w",
+  here("Data","iSeq", run_name, primer, "ASVs_swarm_out.fasta"), 
+  "-u", here("Data","iSeq", run_name, primer, "ASVs_swarm_cluster.txt"),
+  here("Data", "iSeq", run_name, primer, "ASVs_swarm_in.fasta")
+  , sep = " ")
+  , intern = TRUE)
+
+```
+
+
+The ITS_ASVs_swarm_cluster.txt file tells us which sequences have been clustered
+
+column 09 gives the original sequence name
+column 10 gives the centroid sequence to which it has been clustered
+column 01 tells us if the sequence is itself a centroid sequence ("S") or clustered to a centroid ("H")
+column 04 gives the % identity with the centroid (here between 100% and 99%)
+
+```{r}
+
+Cluster_ID <- read_delim(here("Data", "iSeq",  run_name, primer, "ASVs_swarm_cluster.txt"), delim = "\t", col_names = FALSE)
+
+#filter only sequences that have been clustered
+Cluster_ID <- 
+Cluster_ID %>% 
+  dplyr::rename(seq = X9, Type = X1, match = X10, pident = X4) %>% 
+  select(seq, Type, match, pident) %>% 
+  filter(Type == "H" ) %>% 
+  arrange(match)
+
+#rename seqs to match sequence table
+Cluster_ID <- 
+Cluster_ID %>% 
+  mutate(across(one_of("seq", "match"), function(x){
+    gsub("(seq)(\\d+)_\\d+", "\\1_\\2", x)}))
+
+#split by cluster centroid
+Cluster_list <- split(Cluster_ID, Cluster_ID$match)
+
+
+#sum abundance of clustered sequences
+ASV_list <- 
+  lapply(Cluster_list, function(x) {
+  S_seq <- unique(x$match)
+  C_seqs <- x$seq
+  ASV[,S_seq] <- rowSums(ASV[,c(S_seq,C_seqs)])
+})
+
+#create new ASV table with only the centroid sequences
+ASV_sw <- ASV
+ASV_sw[,names(ASV_list)] <- bind_rows(ASV_list)
+ASV_sw <- ASV_sw[, which(! colnames(ASV_sw) %in% Cluster_ID$seq)] 
+
+#export ASV table
+ASV_sw %>% 
+  write.table(., here("Data", "iSeq", run_name, primer, "ASV_swarm.text"))
+
+```
+
+update fasta file with sequence centroids
+```{r}
+seqs <- readDNAStringSet(here("Data", "iSeq", run_name, primer, "ASVs_swarm_out.fasta"))
+
+names(seqs) <- gsub("(seq)(\\d+)_\\d+", "\\1_\\2", names(seqs))
+
+sum(!names(seqs) %in% colnames(ASV_sw[,-1]))
+
+writeXStringSet(seqs, here("Data", "iSeq", run_name, primer, "ASV_swarm.fasta"))
+```
+
+read_files
+```{r}
+seqs <- readDNAStringSet(here("Data","iSeq", run_name, primer,  "ASV_swarm.fasta"))
+
+ASV_sw <- read.table(here("Data", "iSeq", run_name, primer, "ASV_swarm.text"))
+```
+
+https://unite.ut.ee/repository.php
+
+#taxonomy
+
+https://unite.ut.ee/repository.php
+
+Abarenkov, Kessy; Zirk, Allan; Piirmann, Timo; Pöhönen, Raivo; Ivanov, Filipp; Nilsson, R. Henrik; Kõljalg, Urmas (2022): UNITE general FASTA release for eukaryotes 2. Version 16.10.2022. UNITE Community. https://doi.org/10.15156/BIO/2483914
+
+Includes global and 3% distance singletons. 
+
+##Sintax
+
+#taxonomy
+
+I download the PLANiTS database from [here](https://github.com/apallavicini/PLANiTS/blob/master/PLANiTS_29-03-2020.zip) 
+
+The article describing teh database can be found [here](https://academic.oup.com/database/article/doi/10.1093/database/baz155/5722079)
+
+##Sintax
+
+```{r}
+system(
+  paste(
+    "/Applications/vsearch/bin/vsearch --sintax ",
+    here("Data", "iSeq", run_name, primer, "ASV_swarm.fasta"), "--db", 
+     here("Data", "PLANiTS_29-03-2020", "ITS2.SINTAX_format.fas"),
+    "--sintax_cutoff 0.1 --tabbedout",
+   here("Data","iSeq", run_name, primer, "ITS2_Plants_tax.txt"), sep = " "
+)
+)
+```
+
+
+```{r}
+Sintax_taxa <- read_tsv(here("Data","iSeq", run_name,
+                             primer, "ITS2_Plants_tax.txt"), 
+                        col_names = FALSE) %>% 
+  select(1:2)
+
+colnames(Sintax_taxa) <- c("seq", "tax")
+
+Sintax_prep <- 
+  Sintax_taxa %>% 
+  filter(!is.na(tax)) %>% 
+  mutate(tax = strsplit(tax, ",")) %>% 
+  unnest(tax) %>% 
+  group_by(seq) %>% 
+  mutate(taxonomy_name = gsub("\\w:(.+)\\(.+", "\\1", tax),
+         taxonomy_level = gsub("(\\w):.+", "\\1", tax),
+         taxonomy_conf = gsub(".+\\((.+)\\)", "\\1", tax)) %>% 
+  mutate(taxonomy_level = case_when(taxonomy_level == "k" ~ "kingdom",
+                                    taxonomy_level == "p" ~ "phylum",
+                   taxonomy_level == "c" ~ "class",
+                   taxonomy_level == "o" ~ "order",
+                   taxonomy_level == "f" ~ "family",
+                   taxonomy_level == "g" ~ "genus",
+                   taxonomy_level == "s" ~ "species"))
+
+#get table with all assignments (even the unlikely ones)
+Sintax_taxa_table_full <- 
+ Sintax_prep %>% 
+  select(-tax, -taxonomy_conf) %>% 
+  pivot_wider(names_from = taxonomy_level, values_from = taxonomy_name)
+
+#get table with probabilities for each assignment
+Sintax_taxa_table_prob <- 
+  Sintax_prep %>% 
+  select(-tax, -taxonomy_name) %>% 
+  pivot_wider(names_from = taxonomy_level, values_from = taxonomy_conf)
+```
+
+export
+
+```{r}
+write_tsv(Sintax_taxa_table_full, here("Data", "Plants_Sintax_tax.txt"))
+write_tsv(Sintax_taxa_table_prob, here("Data", "Plants_Sintax_prob.txt"))
+
+Sintax_taxa_table_full <- read_tsv(here("Data", "Plants_Sintax_tax.txt"))
+Sintax_taxa_table_prob <- read_tsv(here("Data", "Plants_Sintax_prob.txt"))
+```
+
+
+```{r}
+ITS_taxa_80 <- Sintax_taxa_table_full
+ITS_taxa_80[Sintax_taxa_table_prob < 0.8] <- NA_character_ 
+
+ITS_taxa_80 <- 
+  ITS_taxa_80 %>% 
+  mutate(across(everything(), function(x){gsub("NA", NA, x, fixed = TRUE)}))
+
+```
+
+
+harmonizing taxonomy with gbif backbone
+```{r}
+ITS_gbif <- 
+ITS_taxa_80 %>% 
+  select(-seq) %>% 
+  distinct() %>% 
+  filter(!is.na(species)) %>% 
+  ungroup() %>% 
+  mutate(ID = paste("ID", 1:n(), sep = "_")) %>% 
+  dplyr::rename(name = species)
+
+ITS_gbif_query <- name_backbone_checklist(ITS_gbif)
+
+ITS_gbif_query <-  
+  ITS_gbif_query %>% 
+  select(kingdom, phylum, class, order, family, genus, species) %>% 
+  mutate(ID = ITS_gbif$ID) %>% 
+  relocate(ID, .before = 1) 
+
+ITS_taxa_80 <-   
+left_join(ITS_taxa_80, ITS_gbif) %>% 
+  pivot_longer(!one_of("seq", "ID")) %>% 
+  left_join(pivot_longer(ITS_gbif_query, -ID, 
+                         names_to = "name", 
+                         values_to = "GBIF_value")) %>% 
+  mutate(value = case_when(!is.na(ID) ~ GBIF_value,
+                           TRUE ~ value)) %>% 
+  select(seq, name, value) %>% 
+  pivot_wider(names_from = name, values_from = value) %>% 
+  select(-name)
+
+```
+
+```{r}
+write_tsv(ITS_taxa_80, here("Data","iSeq", run_name, primer, "Plants_Sintax_80.txt"))
+ITS_taxa_80 <- read_tsv(here("Data","iSeq", run_name, primer, "Plants_Sintax_80.txt"))
+```
+
+## merge species
+
+cluster sequences assigned to same species or genus (if species is NA)
+
+collapse reads from same species
+```{r}
+#show same genus / species assigned to more than one OTU
+  ITS_taxa_80 %>% 
+  group_by(genus, species) %>% 
+  filter(n() > 1) %>% 
+  arrange(genus, species)
+```
+
+we use phyloseq to merge ASVs with the same taxonomic assignment at species level, or genius level if a species level assignment is missing
+
+```{r}
+
+ASV_ps <- ASV_sw[,-1]
+rownames(ASV_ps) <- ASV_sw$Sample
+
+ITS_taxa_80_ps <- 
+  ITS_taxa_80 %>% 
+   mutate(species = case_when(is.na(species) & !is.na(genus) ~ paste(genus, "sp."),
+                             TRUE ~ species)) %>% 
+  select(-seq) %>% 
+  as.matrix()
+
+rownames(ITS_taxa_80_ps) <- ITS_taxa_80$seq
+
+ps_obj <- phyloseq(otu_table(ASV_ps, taxa_are_rows = FALSE),
+                   tax_table(ITS_taxa_80_ps))
+
+ps_glom <- tax_glom(ps_obj, taxrank="species", NArm=FALSE)
+
+ITS_taxa_80_glom <- 
+  as.data.frame(tax_table(ps_glom)) %>% 
+  tibble::rownames_to_column("seq")
+
+ASW_glom <- 
+  as.data.frame(otu_table(ps_glom)) %>% 
+  tibble::rownames_to_column("Sample")
+
+```
+
+
+
+export
+```{r}
+write_tsv(ITS_taxa_80_glom, here("Data","iSeq", "Plants_taxa_80_glom.txt"))
+
+write_tsv(ASW_glom, here("Data","iSeq", "Plants_ASW_glom.txt"))
+```
+
+

@@ -1,0 +1,69 @@
+---
+title: "Lib Prep Bacteria"
+output: html_notebook
+---
+
+```{r}
+library(readr)
+library(readxl)
+library(googlesheets4)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(here)
+```
+
+
+```{r}
+DNAC_p1 <- read_xlsx(here("Data",  "Lib_Prep", "plate_1_plate_2_library_fabian_james_smear_analysis.xlsx"),
+                  range = "A1:J97", sheet = 1) %>% 
+  mutate(Plate = "Plate1")
+
+DNAC_p2 <- read_xlsx(here("Data",  "Lib_Prep", "plate_1_plate_2_library_fabian_james_smear_analysis.xlsx"),
+                  range = "A1:J97", sheet = 2) %>% 
+  mutate(Plate = "Plate2")
+
+DNAC <- bind_rows(list(DNAC_p1, DNAC_p2)) %>% 
+  filter(Well != "Ladder")
+```
+
+```{r}
+
+googlesheet_url <- "https://docs.google.com/spreadsheets/d/1GKWzD0q683oH3I_i5ueulbf4P4Q-9-a9YPbdyUZyF2A/edit#gid=0"
+
+Meta <- read_sheet(googlesheet_url, sheet = "Sample_data")
+  
+```
+
+```{r}
+Plate_layout <- read_xlsx(here("Data",  "Lib_Prep", "plate_1_plate_2_library_fabian_james_smear_analysis.xlsx"),
+                  range = "A1:N17", sheet = 3) 
+
+Plate_layout <- 
+Plate_layout %>% 
+  pivot_longer(!one_of("Plate", "row"), values_to = "Sample_names") %>% 
+  mutate(Well = paste(row, name, sep = "")) %>% 
+  select(-row, -name) %>% 
+  filter(!is.na(Sample_names))
+```
+
+```{r}
+DNAC %>% 
+  left_join(Plate_layout) %>% 
+  left_join(Meta) %>%
+  filter(Sample_names != "James") %>% 
+  mutate(Sampler = case_when(grepl("BLANK", Sample_names) ~ "Extraction Blanks",
+                          is.na(Type) ~ Sample_names,
+                          TRUE ~ Sampler)) %>% 
+  mutate(Type = case_when(grepl("BLANK", Sample_names) ~ "Controls",
+                          is.na(Type) ~ "Controls",
+                          TRUE ~ Type)) %>% 
+  ggplot(aes(x = Sampler, y = `ng/uL`, colour = duration))+
+  geom_point(position = position_dodge(width = 0.6), alpha = 0.6)+
+  facet_grid(~Type, space = "free", scales = "free_x")+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+        legend.position = "bottom")
+```
+

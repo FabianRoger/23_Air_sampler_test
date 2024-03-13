@@ -1,0 +1,137 @@
+---
+title: "Bead-beating_sim"
+author: "Fabian Roger"
+date: '2022-05-06'
+output: html_document
+---
+#libraries
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+#Simulations
+here I simulate how relative abundance change with bead beating, both 
+
+1) within a sample
+2) across samples
+
+For samples of 
+
+1) constant composition
+2) variable composition
+
+The background for the simulation is that we will extract DNA from filters for which we would like to analyse different target groups which differ in their 'sturdiness' (Bacteria, Fungi, Plants, Metazoan cells)
+
+For the simulations I assume we have 5 species in equal abundances but different extraction efficiencies - depending on the amount of bead beating
+
+```{r}
+
+n <- 5
+
+extract_bump = function(eff, fact){
+  res <-  eff*fact
+  res[res>=100] <- 100
+  return(res)
+}
+
+
+Sample_df <- 
+  tibble(Spec = LETTERS[1:n],
+         abund = rep(10000/n, n),
+         bead_0_eff = exp(seq(1,log(100), length.out = n)),
+         bead_1_eff = extract_bump(bead_0_eff,2),
+         bead_2_eff = extract_bump(bead_0_eff,5),
+         bead_3_eff = extract_bump(bead_0_eff,10),
+         bead_4_eff = extract_bump(bead_0_eff,100)
+         )
+
+```
+
+
+## efficiency
+bead beating efficiency per species
+
+```{r}
+Sample_df %>% 
+  pivot_longer(!one_of(c("Spec", "abund"))) %>% 
+  ggplot(aes(x = name, y = value, colour = Spec))+
+  geom_point()+
+  geom_line(aes(group = Spec))+
+  theme_bw()+
+  scale_colour_viridis_d()
+```
+
+## abs abundance
+absolute abundance of the DNA after extraction
+```{r}
+Sample_df %>% 
+  mutate(org = abund) %>% 
+  mutate(across(starts_with("bead"), ~.x*(abund/100))) %>% 
+  pivot_longer(!one_of("Spec", "abund")) %>% 
+  ggplot(aes(x = name, y = value, fill = Spec))+
+  geom_bar(stat = "identity", position = "stack")+
+  theme_bw()+
+  scale_fill_viridis_d()
+  
+```
+
+## rel abundance
+relative abundance of the DNA after extraction
+```{r}
+Sample_df %>% 
+  mutate(org = abund) %>% 
+  mutate(across(starts_with("bead"), ~.x*(abund/100))) %>% 
+  pivot_longer(!one_of("Spec", "abund")) %>%
+  group_by(name) %>% 
+  mutate(value = value / (sum(value))) %>% 
+  ggplot(aes(x = name, y = value, fill = Spec))+
+  geom_bar(stat = "identity", position = "stack")+
+  theme_bw()+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_fill_viridis_d()
+  
+  
+```
+
+# varying composition
+For absol abundance across sample with varying composition
+```{r}
+
+Sample_df %>% 
+  mutate(abund_1 = 10000/2^(0:(n-1)),
+         abund_2 = abund_1[n():1]) %>% 
+  pivot_longer(starts_with("abund"), names_to = "Sample", values_to = "abund") %>% 
+  pivot_longer(starts_with("bead"), names_to = "Treatment", values_to = "efficiency") %>% 
+  mutate(value = abund * efficiency/100) %>% 
+  group_by(Treatment, Sample) %>% 
+  mutate(value = value / sum(value)) %>% 
+  ggplot(aes(x = Treatment, y = value, fill = Spec))+
+  geom_bar(stat = "identity", position = "stack")+
+  facet_wrap(~Sample)+
+  theme_bw()+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_fill_viridis_d()+
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+```{r}
+Sample_df %>% 
+  mutate(abund_1 = 10000/2^(0:(n-1)),
+         abund_2 = abund_1[n():1]) %>% 
+  pivot_longer(starts_with("abund"), names_to = "Sample", values_to = "abund") %>% 
+  pivot_longer(starts_with("bead"), names_to = "Treatment", values_to = "efficiency") %>% 
+  mutate(value = abund * efficiency/100) %>% 
+  group_by(Treatment, Sample) %>% 
+  mutate(value = value / sum(value)) %>% 
+  ggplot(aes(x = Sample, y = value, fill = Spec))+
+  geom_bar(stat = "identity", position = "stack")+
+  facet_wrap(~Treatment)+
+  theme_bw()+
+  scale_fill_brewer(palette = "Dark2")+
+  scale_fill_viridis_d()+
+  theme(axis.text.x = element_text(angle = 90))
+```
+

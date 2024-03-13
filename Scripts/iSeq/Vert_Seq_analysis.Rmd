@@ -1,0 +1,666 @@
+---
+title: "Vertebrate 16S"
+author: "Fabian Roger"
+date: "`r Sys.Date()`"
+output: html_notebook
+---
+
+```{r, message = FALSE}
+
+#data handling
+library(dplyr)
+library(tidyr)
+library(readr)
+library(here)
+library(readxl)
+library(stringr)
+library(googlesheets4)
+
+#plotting
+library(ggplot2)
+library(gridExtra)
+library(ggrepel)
+
+
+#seqeunce analysis
+library(dada2)
+library(ShortRead)
+library(DECIPHER)
+library(taxize)
+library(rgbif)
+library(phyloseq)
+
+#library(knitr)
+
+#parallel processing
+library(future.apply) 
+library(furrr)
+#library(rgbif)
+#library(ggtree)
+#library(ape)
+
+
+#library(decontam)
+#library(googlesheets4)
+#library(lulu)
+#library(bold)
+
+#helper functions for sequence analyis
+source(here("Scripts", "Seq_analysis_helper.R"))
+```
+
+```{r}
+sessionInfo()
+```
+
+
+#dada2
+This script follows the [DADA2 ITS Tutorial (1.8)](https://benjjneb.github.io/dada2/ITS_workflow.html) 
+The original article can be found [here](http://rdcu.be/ipGh)
+
+The script was written with DADA2 version 1.18.0
+
+The data are demultiplexed (see `Demultiplexing.Rmd`)
+
+#set-up
+
+here("Data", "iSeq", "20231128_FS10000965_18_BSB09423-0723", "phenix_config_file.json")
+
+```{r}
+run_name <- "20231128_FS10000965_18_BSB09423-0723"
+primer <- "Vertebrates"
+
+#path to primer demultiplexed files
+trimmed_path <- here("Data", "iSeq", run_name, primer)
+```
+
+#Filter
+
+filter trimmed reads
+```{r}
+filterpath <- here("Data", "iSeq", run_name, primer, "filtered")
+dir.create(filterpath)
+```
+
+
+```{r, "sort fwrd and rev", cache=TRUE}
+
+fnFs <- sort(list.files(trimmed_path, pattern="_R1.fastq.gz", full.names = TRUE)) # Just the forward read files
+fnRs <- sort(list.files(trimmed_path, pattern="_R2.fastq.gz", full.names = TRUE)) # Just the reverse read files
+
+# Get sample names from forward read filenames
+sample.names <- 
+   sapply(fnFs, function(x) gsub(".+Vertebrates/(.+)_R1.fastq.gz", "\\1", x), USE.NAMES = FALSE)
+
+```
+
+###quality profiles
+
+Visualize the quality profile of the forward reads
+
+```{r, "plot quality of reads", cache=TRUE}
+# plot one forward and one reverse read in the rapport
+plotQualityProfile(fnFs[152])+
+  scale_y_continuous(limits = c(0,40))+
+  scale_x_continuous(breaks = seq(0,300, 20))+
+  geom_hline(yintercept = 30, colour = "grey", linetype = "dashed")+
+  geom_hline(yintercept = 20, colour = "grey", linetype = "dashed")+
+  labs(title = paste(sample.names[1], "foward", sep = " - " ))
+
+plotQualityProfile(fnRs[152])+
+  scale_y_continuous(limits = c(0,40))+
+  scale_x_continuous(breaks = seq(0,300, 20))+
+  geom_hline(yintercept = 30, colour = "grey", linetype = "dashed")+
+  geom_hline(yintercept = 20, colour = "grey", linetype = "dashed")+
+  labs(title = paste(sample.names[1], "reverse", sep = " - "))
+```
+
+The quality of the forwards reads is very high, throughout the full length of the read.  The quality of the reverse read is equally high
+
+
+### merged read length
+To decide on appropriate trimming parameters, we check the distribution of the merged read-lengths.
+
+we don't need the merged reads (DADA2 needs unmerged reads) so we merge them on them fly and just store the length distributions
+
+
+```{r}
+#merge first file with vsearch
+
+  system(
+  paste(
+    "/Applications/vsearch/bin/vsearch --fastq_mergepairs ", fnFs[152], 
+    " --reverse ", fnRs[152], 
+    " --fastaout", here("Data", "iSeq", run_name, primer, "test_merge.fasta"), 
+    "--fastq_allowmergestagger"
+    ), intern = TRUE
+  )
+  
+  #read file
+file_merged <- readDNAStringSet(here("Data", "iSeq", run_name, primer, "test_merge.fasta"))
+
+
+table(width(file_merged)) %>% 
+  as.data.frame() %>% 
+  mutate(across(one_of("Var1", "Freq"), function(x) as.numeric(as.character(x)))) %>% 
+  arrange(desc(Freq)) %>% 
+  mutate(prct = Freq / sum(Freq)*100) %>% 
+  mutate(rank = 1:n()) %>% 
+  mutate(Label = case_when( rank < 6 ~ paste(Var1, "(",round(prct,1), " %",")", sep = ""),
+                   TRUE ~ NA_character_)) %>% 
+    ggplot(aes(x = Var1, y = Freq))+
+  geom_line(colour = "darkgrey", alpha = 0.5)+
+  geom_text_repel(aes(label = Label))+
+  geom_point(data = ~filter(.x, !is.na(Label)), colour = "red", size = 0.5)+
+  theme_bw()+
+  scale_x_continuous(limits = c(0,500))
+
+  
+```
+the largest fragments are 226 bp long
+
+The forward and reverse primers are 18 and 19 bp long. Therefore the expected length of the reads is 150-19 = 128/9 bp respectively
+
+Thus we have a minimum overlap of `128+129-226` = 31 bp
+
+The means that we can trim some bps at the ends of the reads but we don't need to trim much (v high quality)
+
+```{r}
+frag_len <- 226
+fwrd_len <- 128
+rev_len <- 129
+fwrd_trim <- 125
+rev_trim <- 125
+
+
+ggplot(data = tibble(x = c(1,frag_len), y = c(1,5)), aes(x = x, y = y))+
+  geom_blank()+
+  geom_segment(x = 0, xend = frag_len, y = 2, yend = 2)+ #fragment
+  geom_segment(x = 0, xend = fwrd_len, y = 3, yend = 3)+ #fwrd
+  geom_segment(x = frag_len-rev_len, xend = frag_len, y = 3.5, yend = 3.5)+ #rev
+  geom_segment(x = fwrd_trim, xend = fwrd_len, y = 3, yend = 3, 
+               colour = "red", size = 2, alpha = 0.2)+ #fwrd trim
+  geom_segment(x = frag_len-rev_trim, xend = frag_len-rev_len,
+               y = 3.5, yend = 3.5, 
+               colour = "red", size = 3, alpha = 0.2)+ #rev trim
+  geom_segment(x = frag_len-rev_trim, xend = fwrd_trim, y = 2, 
+               yend = 2, colour = "green", size= 3, alpha = 0.2)+ #overlap
+  geom_text(x = ((frag_len-rev_trim) + fwrd_trim)/2, y = 2.25, 
+            label = paste(as.character(fwrd_trim+rev_trim-frag_len), "bp"),
+            colour = "blue", size= 5)+
+  theme_void()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  scale_x_continuous(breaks = seq(0,frag_len, 12))
+```
+
+The filtering parameters we’ll use are standard (however we can allow for more expected errors as DADA is [robust to low quality sequences](https://twitter.com/bejcal/status/771010634074820608) )
+
++ maxN=0 (DADA2 requires no Ns)
++ truncQ=2 
++ maxEE=c(2,2)
+
+The `maxEE` parameter sets the maximum number of “expected errors” allowed in a read. 
+
+We use the `fastqPairedFilter` function to jointly filter the forward and reverse reads.
+
+###filter and trim
+```{r}
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(filterpath, paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(filterpath, paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+```
+
+
+```{r}
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, 
+                     truncLen = c(fwrd_trim, rev_trim),
+                     maxN=0,
+                     maxEE=c(2,2),
+                     truncQ=2,
+                     rm.phix=TRUE,
+                     compress=TRUE, multithread=6) 
+out_df <- 
+out %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column(var = "Sample_name") %>% 
+  mutate(Sample_name = gsub("_R1.+", "", Sample_name)) %>% 
+  mutate(prct = signif(reads.out / reads.in * 100, 2)) %>% 
+  mutate(Sample_name = gsub("(.+?)_S.+.fastq.gz", "\\1", Sample_name))
+
+write_tsv(out_df, here("Data", "iSeq", run_name, primer, "ee_filter_stats.txt"))
+
+out_df 
+```
+
+```{r}
+filt <- list.files(filterpath, full.names = T)
+
+filtFs <- filt[grepl("*_F_filt.fastq.gz", filt)]
+names(filtFs) <- gsub(".+filtered/(.+?)_F.+", "\\1", filtFs)
+
+filtRs <- filt[grepl("*_R_filt.fastq.gz", filt)]
+names(filtRs) <- gsub(".+filtered/(.+?)_R.+", "\\1", filtRs)
+```
+
+
+
+# Learn errors
+```{r}
+
+errF <- learnErrors(
+  filtFs,
+  multithread = TRUE,
+  nbases = 1e9,
+  errorEstimationFunction = loessErrfun_mod4,
+  verbose = TRUE
+)
+
+errR <- learnErrors(
+  filtRs,
+  multithread = TRUE,
+  nbases = 1e9,
+  errorEstimationFunction = loessErrfun_mod4,
+  verbose = TRUE
+)
+```
+
+
+```{r, cache=TRUE}
+plotErrors(errF, nominalQ=TRUE)
+
+plotErrors(errR, nominalQ=TRUE)
+```
+
+# Denoise
+```{r}
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+```
+
+```{r}
+
+denoise_stat <- 
+sapply(dadaFs, function(x) sum(getUniques((x)))) %>% 
+  data.frame(denoised = .) %>% 
+  tibble::rownames_to_column(var = "Sample_name") %>% 
+  left_join(select(out_df, Sample_name, reads.out)) %>% 
+  mutate(prct = round(denoised / reads.out*100, 2))
+  
+write_tsv(denoise_stat, here("Data", "iSeq", run_name, primer, "denoise_stat.txt"))
+
+denoise_stat
+```
+
+# Merge
+Merge paired reads
+Spurious sequence variants are further reduced by merging overlapping reads. 
+
+```{r}
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
+
+merge_stat <- 
+lapply(mergers, function(x) {sum(x$abundance)}) %>% 
+  as_tibble() %>% 
+  pivot_longer(everything(),
+    names_to = "Sample_name",
+               values_to = "merged.out") %>% 
+  left_join(select(out_df, Sample_name, reads.out)) %>% 
+  mutate(prct = round(merged.out/reads.out * 100, 2))
+
+merge_stat %>% 
+write_tsv(here("Data", "iSeq", run_name, primer, "merge_stat"))
+
+merge_stat
+
+```
+
+# Construct sequence table:
+
+```{r, "Seqeunce table"}
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+```
+
+
+# Chimeras
+
+```{r, "Chimera removal", cache=TRUE}
+
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+
+write_rds(seqtab.nochim, here("Data", "iSeq", run_name,
+                              primer, "seqtab.nochim.rds"))
+
+dim(seqtab.nochim)
+
+```
+
+```{r}
+chimera_stat <- 
+tibble(Sample_name = rownames(seqtab),
+       before = rowSums(seqtab),
+       after = rowSums(seqtab.nochim),
+       prct = round(after/before*100,2))
+
+chimera_stat %>% 
+write_tsv(here("Data", "iSeq", run_name, primer, "Chimera_stat.txt"))
+
+chimera_stat
+```
+
+
+percentage of Chimeric reads
+
+```{r}
+(1-(sum(seqtab.nochim)/sum(seqtab)))*100
+```
+
+percentage of Chimeric ASVs
+
+```{r}
+(1-(ncol(seqtab.nochim)/ncol(seqtab)))*100
+```
+
+
+# Length filtering
+
+check ASV length
+
+```{r}
+data.frame(table(nchar(colnames(seqtab.nochim)))) %>% 
+  ggplot( aes(x = Var1, y = Freq))+
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = -90))+
+  labs(x = "length in bp", title = "histogramm of merged sequence lenghts")
+```
+
+###export raw ASV and fasta file
+
+export ASVs to Fasta file 
+
+```{r}
+seqs <- DNAStringSet(colnames(seqtab.nochim))
+
+names(seqs) <- paste("seq", 
+                             formatC(1:length(seqs), flag = "0",
+                                     width = nchar(length(seqs))),
+                             sep = "_")
+
+writeXStringSet(seqs, here("Data", "iSeq", run_name, primer, "ASVs.fasta"), format = "fasta")
+
+#seqs <- readDNAStringSet(here("Data", run_name, primer, "ASVs.fasta"))
+
+ASV <- 
+seqtab.nochim %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column(var = "Sample") %>% 
+  `colnames<-`(c("Sample", names(seqs))) 
+  
+write_tsv(ASV, here("Data", "iSeq", run_name, primer, "ASVs.txt"))
+#ASV <- read_tsv(here("Data", run_name, primer, "ASVs.txt"))
+```
+
+#taxonomy
+
+I blast the ASV sequences against the nt database on NCBI, using NCBI BLAST (online - upload the ASVs.fasta file). I download the results in CSV format (Download all --> Hit Table(csv)) and save the file as H5NXRN2W016-Alignment-HitTable.csv
+
+```{r}
+
+Vert_ncbi <- read_csv(here("Data", "iSeq", run_name, primer, "RS5Y8DGN013-Alignment-HitTable.csv"))
+
+colnames(Vert_ncbi) <- c("query","subject","prct_identity","alignment_length","mismatches","gap_opens","q_start","q_end","s_start","s_end","evalue","bit_score")
+```
+
+add taxonomy from accession number 
+
+(works if there are not too many accession numbers to check. Otherwise the taxonomizr package provides an offline solution but requires the download of the database)
+
+```{r}
+
+id_to_taxa <- Vert_ncbi %>% 
+  filter(!is.na(subject)) %>% 
+  pull(subject) %>% 
+  unique() %>% 
+  tibble(subject = .)
+
+options(ENTREZ_KEY = "4c1de0b0fe003a788cb9574b4db9fbcc8109")
+
+ncbi_ids <- genbank2uid(id_to_taxa$subject)
+
+ncbi_ids <- lapply(ncbi_ids, function(x) {x[[1]][1]})
+ncbi_ids <- unlist(ncbi_ids)
+
+id_to_taxa$ncbi_id <- ncbi_ids
+
+taxa_names <- id2name(id = unique(ncbi_ids), db = "ncbi")
+taxa_names <- taxa_names[!is.na(names(taxa_names))]
+taxa_names_df <- bind_rows(taxa_names)
+
+Vert_ncbi <- 
+  Vert_ncbi %>% 
+  left_join(id_to_taxa) %>% 
+  left_join(dplyr::rename(taxa_names_df, ncbi_id = id))
+```
+
+filter taxa hits
+
+I filter taxa hits by bitscore and check sequences with multiple best hits manually. I also check sequences with best hits below 98%
+
+1) filter hits for best hit
+--> if there is a perfect hit (100%) we keep that, if not we keep the highest bit scores and bit scores down to 10% less than the highest bit score
+
+```{r}
+Vert_ncbi_u <- 
+  Vert_ncbi %>% 
+  select(query, prct_identity, alignment_length, bit_score, name) %>% 
+  distinct() %>% 
+  group_by(query) %>%
+  filter(case_when(max(prct_identity) == 100 ~ bit_score == max(bit_score),
+                   TRUE ~ bit_score >= max(bit_score)*0.9))
+```
+
+harmonizing taxonomy and adding higher taxonomic levels with gbif backbone
+```{r}
+
+plan(multisession)
+
+Vert_ncbi_gbif <- 
+future_map(1:nrow(Vert_ncbi_u), function(x) {
+  name_backbone(name = Vert_ncbi_u$name[x], 
+                rank = "species")
+},
+.progress = TRUE) %>% bind_rows()
+
+Vert_ncbi_gbif <-  
+  Vert_ncbi_gbif %>% 
+  select(kingdom, phylum, class, order, family, genus, species) %>% 
+  mutate(seq = Vert_ncbi_u$query) %>% 
+  relocate(seq) 
+  
+write_tsv(Vert_ncbi_gbif, here("Data", "iSeq", "Vert_ncbi.txt"))
+
+Vert_ncbi_gbif <- read_tsv(here("Data", "iSeq", "Vert_ncbi.txt"))
+```
+
+For sequences with multiple best hits, we keep the lowest common ancestor
+
+```{r}
+Vert_ncbi_gbif %>% 
+  group_by(seq) %>% 
+  filter(n() > 1) %>% 
+  filter(!is.na(kingdom)) %>% 
+  distinct()
+```
+
+
+```{r}
+Vert_ncbi_gbif_clean <- 
+Vert_ncbi_gbif %>% 
+  group_by(seq) %>% 
+  coherent_taxonomy() %>% 
+  mutate(species = case_when(!is.na(genus) & is.na(species) ~ paste0(genus, " sp."),
+                             TRUE ~ species))
+```
+
+
+
+best hits of low quality
+
+```{r}
+seq_len = tibble(query = names(seqs), seq_len = width(seqs))
+
+low_qual <- 
+Vert_ncbi_u %>% 
+  left_join(seq_len) %>% 
+  mutate(alignment_prct = alignment_length/seq_len * 100) %>% 
+  group_by(query) %>% 
+  dplyr::slice(1) %>%
+  ungroup %>% 
+  filter(prct_identity < 96 | alignment_prct < 98) %>% 
+  select(query, prct_identity, alignment_prct, bit_score) %>% 
+  left_join(Vert_ncbi_gbif_clean, by = c("query" = "seq")) %>% 
+  arrange(family, genus, species)
+
+low_qual
+
+```
+
+there are no good hard rules about how confident we can be about the taxonomic assignments at lower identity levels
+
+for hits below 95% some suggest only family assignment should be kept, for hits below 90% only phylum. As a general rules these hits should be taken with caution
+
+for now I leave it
+
+pool vertebrate sequences assigned to the same species
+we use phyloseq to merge ASVs with the same taxonomic assignment at species level, or genus level if a species level assignment is missing
+
+```{r}
+
+ASV_ps <- as.data.frame(ASV[,-1])
+rownames(ASV_ps) <- ASV$Sample
+
+Vert_tax_ps <- 
+  Vert_ncbi_gbif_clean %>% 
+  select(-seq) %>% 
+  as.matrix()
+
+rownames(Vert_tax_ps) <- Vert_ncbi_gbif_clean$seq
+
+ps_obj <- phyloseq(otu_table(ASV_ps, taxa_are_rows = FALSE),
+                   tax_table(Vert_tax_ps))
+
+ps_glom <- tax_glom(ps_obj, taxrank="species", NArm=FALSE)
+
+Vert_taxa_glom <- 
+  as.data.frame(tax_table(ps_glom)) %>% 
+  tibble::rownames_to_column("seq")
+
+ASW_glom <- 
+  as.data.frame(otu_table(ps_glom)) %>% 
+  tibble::rownames_to_column("Sample")
+
+```
+
+
+```{r}
+#export ASV table
+ASW_glom %>% write_tsv(., here("Data",  "iSeq", run_name, primer, "Vert_ASV_sp.text"))
+
+#export tax table
+write_tsv(Vert_taxa_glom, here("Data",  "iSeq", run_name, primer, "Vert_tax_sp.txt"))
+```
+
+
+```{r}
+ASV_sp <- read_tsv(here("Data", "iSeq", run_name, primer, "Vert_ASV_sp.text"))
+Vert_tax <- read_tsv(here("Data", "iSeq", run_name, primer, "Vert_tax_sp.txt"))
+```
+
+
+#Analysis
+```{r}
+gURL <- "https://docs.google.com/spreadsheets/d/1GKWzD0q683oH3I_i5ueulbf4P4Q-9-a9YPbdyUZyF2A/edit#gid=847966271"
+
+Meta <- read_sheet(gURL, sheet = "Sample_data")
+
+Plates <- read_sheet(gURL, sheet = "Plates", range = "A1:M21", col_types = "c") %>% 
+  dplyr::rename(row = 1) %>% 
+  filter(row %in% LETTERS[1:8]) %>% 
+  mutate(Plate = rep(c("Plate_1", "Plate_2"), each = 8)) %>% 
+  pivot_longer(!one_of(c("row", "Plate")), names_to = "col", values_to = "Sample_names") %>% 
+  select(Plate, row, col, Sample_names)
+
+shini_barcodes <- 
+  read_xlsx(here("Documents", "Shini_barcodes_4_plates.xlsx")) %>% 
+  mutate(Plate = rep(rep(paste("Plate", 1:4, sep = "_"), each = 96),2)) %>% 
+  filter(Plate %in% c("Plate_1", "Plate_2")) %>% 
+  dplyr::rename(Index = 1) %>% 
+  select(Index, Plate) %>% 
+  filter(grepl("_i5$", Index)) %>% 
+  mutate(Index = gsub("(.+?)_i5", "\\1", Index)) %>% 
+  group_by(Plate) %>% 
+  mutate(row = rep(LETTERS[1:8], each = 12)) %>% 
+  mutate(col = as.character(rep(1:12, 8)))
+```
+
+
+```{r}
+Meta <- 
+Plates %>% 
+  filter(!is.na(Sample_names)) %>% 
+  left_join(shini_barcodes) %>% 
+  select(Sample_names, Index) %>% 
+  left_join(Meta)
+
+ASV_tax_long <- 
+ASV_sp %>% 
+  pivot_longer(-Sample, names_to = "seq", values_to = "reads") %>% 
+  dplyr::rename(Index = Sample) %>% 
+  left_join(Meta) %>% 
+  left_join(Vert_tax)
+```
+
+```{r}
+
+ASV_tax_long %>% 
+  mutate(reads = ifelse(reads == 0, NA, reads)) %>% 
+  arrange(Type) %>% 
+  mutate(Sample_names = factor(Sample_names, levels = unique(.$Sample_names))) %>% 
+  ggplot(aes(y = species, x = Sample_names, size = reads, colour = Type))+
+  geom_point()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+  
+```
+
+samples for amplitaq gold test
+```{r}
+
+Sample_w_detection <- 
+ASV_tax_long %>% 
+  filter(phylum == "Chordata") %>% 
+  filter(!is.na(genus)) %>% 
+  filter(order != "Primates") %>% 
+  mutate(reads = ifelse(reads > 0, 1, 0)) %>% 
+  group_by(Sample_names) %>% 
+  summarise(S = sum(reads)) %>% 
+  filter(S > 1) %>% pull(Sample_names)
+ 
+ASV_tax_long %>% 
+  filter(Sample_names %in% Sample_w_detection) %>% 
+  mutate(reads = ifelse(reads == 0, NA, reads)) %>% 
+   ggplot(aes(y = species, x = Sample_names, size = reads))+
+  geom_point(colour = "darkblue", fill = NA, shape = 21)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+ 
+  
+```
+```{r}
+Plates %>% 
+  filter(Sample_names %in% Sample_w_detection | grepl("PCR|BLANK", Sample_names)) %>% 
+  filter(Plate == "Plate_2") %>% 
+  arrange(Sample_names) %>% 
+  clipr::write_clip()
+```
+

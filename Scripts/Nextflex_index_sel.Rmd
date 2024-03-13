@@ -1,0 +1,144 @@
+---
+title: "Nextflex"
+output: html_notebook
+---
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(Biostrings)
+library(here)
+```
+
+```{r}
+Nextflex <- read_xlsx(here("Data", "NEXTFLEX-UDI-Barcodes-1536-indexes_10NT.xlsx"))
+```
+
+#i7
+
+1536 unique i7 indicies
+```{r}
+Nextflex$`I7 Index` %>%
+  unique() %>% 
+  length()
+```
+
+minimum hamming distance is 3 bps
+
+--> maybe worth filtering out those that have 
+```{r}
+Nextflex$`I7 Index` %>% 
+  stringDist(method = "hamming") %>% 
+  table()
+```
+
+#i5
+
+1536 unique i5 indicies
+```{r}
+Nextflex$`I5 Index` %>%
+  unique() %>% 
+  length()
+```
+
+minimum hamming distance is 3 bps
+
+--> maybe worth filtering out those that have 
+```{r}
+Nextflex$`I5 Index` %>% 
+  stringDist(method = "hamming") %>% 
+  table()
+```
+
+
+the I5 and I7 indicies are completely unique
+```{r}
+sum(Nextflex$`I5 Index` %in% Nextflex$`I7 Index`)
+```
+
+two i7 indicies happen to be the reverse compl of two i5 indicies:
+
+```{r}
+sum(Nextflex$`I7 Index` %in% Nextflex$`I5 Index reverse complement`)
+```
+
+
+the combined indices have at least 6 bps difference (maybe worth filtering out pairs that have <10 bp difference)
+```{r}
+ind_comb <- paste(Nextflex$`I7 Index`, Nextflex$`I5 Index`, sep = "")
+
+ind_comb %>% 
+  stringDist(method = "hamming") %>% 
+  table()
+
+```
+
+
+
+attempt at optimising the indices but not sure it works great. 
+
+Seems to work to find a subset of index combinations that has a minimum hamming distance of 8 (1360), 9 (975) or 10 (513).
+
+Might not be the most efficient algorithm. 
+```{r}
+min_ham <- 9
+
+ind_comb_sel <- ind_comb
+
+#  initialize temp with high value
+maxtemp <- 20
+i = 1
+
+while(maxtemp > 1 & i <= 100){
+  
+  #hamming sitance between all index pairs
+  distM <- 
+    ind_comb_sel %>% 
+    stringDist(method = "hamming") %>% 
+    as.matrix()
+  
+  #which indices have a hamming distance of less than min_ham bp
+  distM10_list <- 
+    apply(distM, 1, function(x){
+    unique(which(x < min_ham))
+  })
+  
+  #how many indicies with such a hmmaing distance are there (for each index)
+  temp <- sort(unlist(lapply(distM10_list, length)))
+  
+  #maximum amount of 
+  maxtemp = max(temp)
+  
+  #exclude 10 index pairs with highest amount of other index pairs with hamming distance < 10
+  excl <- temp[(length(temp)-10):length(temp)]
+  ind_comb_sel <- ind_comb_sel[-c(as.numeric(names(excl)))]
+  
+  #print status message
+  message(paste("itteration", i, "maxtemp =", maxtemp, sep = " "))
+  
+  i = i+1
+}
+```
+
+
+```{r}
+ind_comb_sel %>% 
+  stringDist(method = "hamming") %>% 
+  table()
+```
+
+
+```{r}
+length(ind_comb_sel)
+```
+
+```{r}
+
+Nextflex_9 <- 
+Nextflex %>% 
+  mutate(ind_comb = ind_comb) %>% 
+  filter(ind_comb %in% ind_comb_sel)
+  
+```
+
