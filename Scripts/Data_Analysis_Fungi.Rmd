@@ -3,6 +3,10 @@ title: "Fungi data analysis"
 output: html_notebook
 ---
 
+# Setup
+
+Load required libraries for analysis.
+
 ```{r}
 library(dplyr)
 library(tidyr)
@@ -12,34 +16,35 @@ library(here)
 library(readr)
 library(ggplot2)
 library(vegan)
-library(readxl)
 library(corrplot)
-library(Biostrings) 
+library(Biostrings)
 library(decontam)
-library(microDecon)
-#library(fungaltraits)
+library(eulerr)
+library(betapart)
+library(ape)
+library(picante)
+library(iNEXT)
 ```
 
-#Set-up
-
-##define Marker
+Define the taxonomic group for this analysis.
 
 ```{r}
 primer <- "Fungi"
 ```
 
-##load meta-data
+Load metadata from the standardized file.
 
 ```{r}
-#load metadata
 Meta <- read_tsv(here("Data", "Meta_data.tsv"))
 ```
 
-#load data
-```{r}
+# Load data
 
-Fungi_ASV <- read_tsv(here("Data", primer, "out_final", "Fungi_ASV_glom.txt")) %>% 
-  mutate(Sample = gsub(".+?(NGS.+)", "\\1", Sample)) %>% 
+Load ASV count table, taxonomy, representative sequences, and DNA concentrations.
+
+```{r}
+Fungi_ASV <- read_tsv(here("Data", primer, "out_final", "Fungi_ASV_glom.txt")) %>%
+  mutate(Sample = gsub(".+?(NGS.+)", "\\1", Sample)) %>%
   dplyr::rename(Index = Sample)
 
 Fungi_tax <- read_tsv(here("Data", primer, "out_final", "Fungi_taxa_80_glom.txt"))
@@ -49,309 +54,309 @@ Fungi_seq <- readDNAStringSet(here("Data", primer, "out_final", paste(primer, "S
 DNAC <- read_tsv(here("Data", "DNA_conc_air_sampler_comp.txt"))
 ```
 
-#fragment lenth distribution
+Load phylogenetic tree (placeholder until trees are built).
 
 ```{r}
-Fungi_len <- 
-Fungi_seq %>% 
-  width() %>% 
-  tibble(len = .) %>% 
-  mutate(seq = names(Fungi_seq)) 
+# Fungi_tree <- ape::read.tree(here("Data", "Fungi", "out_final", "Fungi_tree.nwk"))
+```
 
-Fungi_len %>% 
-  group_by(len) %>% 
-  summarise(n = n()) %>% 
-  ggplot(aes(x = len, y = n))+
-  geom_bar(stat = "identity")
+# Fragment length distribution
 
+Compute sequence lengths for all representative sequences.
 
-#Fungi_len_reads <- 
-Fungi_ASV %>% 
-  pivot_longer(-Index, names_to = "seq") %>% 
-  group_by(seq) %>% 
-  summarise(prev = sum(value > 0), 
+```{r}
+Fungi_len <-
+  Fungi_seq %>%
+  width() %>%
+  tibble(len = .) %>%
+  mutate(seq = names(Fungi_seq))
+```
+
+Plot histogram of sequence lengths.
+
+```{r}
+Fungi_len %>%
+  group_by(len) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(x = len, y = n)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(x = "Sequence length (bp)", y = "Number of ASVs")
+```
+
+Compute reads per ASV and plot against sequence length.
+
+```{r}
+Fungi_len_reads <-
+  Fungi_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  group_by(seq) %>%
+  summarise(prev = sum(value > 0),
             reads = sum(value)) %>%
-  na.omit() %>% 
-  filter(reads < quantile(reads, 0.9)) %>% 
-  left_join(Fungi_len) %>% 
-  mutate(reds_o_prev = reads/prev) %>% 
-  ggplot(aes(x = len, y = reds_o_prev))+
-  geom_point(shape = 21, alpha = 0.5, size = 3)
+  na.omit() %>%
+  filter(reads < quantile(reads, 0.9)) %>%
+  left_join(Fungi_len) %>%
+  mutate(reads_o_prev = reads/prev)
 
-
-
-Fungi_len_reads %>% 
-  pivot_wider(names_from = var, values_from = value) %>% 
-  ggplot(aes(x = count_seq, y = reads))+
-  geom_point()+
-  coord_equal(ratio = 1)+
-  geom_abline(slope = 1)
-
+Fungi_len_reads %>%
+  ggplot(aes(x = len, y = reads_o_prev)) +
+  geom_point(shape = 21, alpha = 0.5, size = 3) +
+  theme_minimal() +
+  labs(x = "Sequence length (bp)", y = "Reads per prevalence")
 ```
 
+# Rarefaction (pre-cleaning)
 
-
-# rarefaction
-
-```{r}
-Fungi_tax %>% 
-  filter(phylum %in% c("Ascomycota", "Basidiomycota", "Tracheophyta"))
-```
-
+Define major phyla to examine rarefaction curves by taxonomic group.
 
 ```{r}
-# Define the target phyla
 major_phyla <- c("Ascomycota", "Basidiomycota", "Tracheophyta", "Other")
+```
 
-# Build one tidy data frame of rarefaction curves per phylum
+Compute rarefaction curves for each major phylum.
+
+```{r}
 rc_df <- map_df(major_phyla, function(ph) {
- 
-   # 1) Pull ASV IDs for this phylum
-  
-  if(ph  == "Other"){
-    
+
+  if(ph == "Other"){
     seqs <- Fungi_tax %>%
-    filter(!phylum %in%  major_phyla) %>%
-    pull(seq)
-    
+      filter(!phylum %in% major_phyla) %>%
+      pull(seq)
   } else{
-    
     seqs <- Fungi_tax %>%
-    filter(phylum  == ph) %>%
-    pull(seq)
-    
+      filter(phylum == ph) %>%
+      pull(seq)
   }
-  
-  
-  # 2) Subset & filter ASV table
-  
+
   asv_sub <- Fungi_ASV %>%
-    select(Index, any_of(seqs)) %>%                  # only ASVs from this phylum
-    #select(c(1, which(colSums(.[-1]) > 0)+1)) %>%           # drop zero‐sum ASVs
+    select(Index, any_of(seqs)) %>%
     data.frame()
-  
-  # 3) Convert to matrix with rownames
+
   rownames(asv_sub) <- asv_sub$Index
   asv_mat <- asv_sub[, -1] %>% as.matrix()
-  
-  # 4) Compute rarefaction curve (tidy = TRUE gives a tibble)
+
   rarecurve(
     asv_mat,
-    step      = 1000,
-    label     = FALSE,
-    tidy      = TRUE
+    step = 1000,
+    label = FALSE,
+    tidy = TRUE
   ) %>%
-    dplyr::rename(Index = Site) %>%                   # match metadata key
-    mutate(phylum = ph)                               # tag the phylum
+    dplyr::rename(Index = Site) %>%
+    mutate(phylum = ph)
 })
 
-# 5) Join metadata
 rc_plot_df <- rc_df %>%
   left_join(Meta, by = "Index")
-
-# 6) Plot: one facet per phylum
-ggplot(rc_plot_df, aes(x = Sample, y = Species, color = duration, group = Index)) +
-  geom_line() +
-  #geom_vline(xintercept = 50000, colour = "darkred") +
-  facet_wrap(~phylum, scales = "free_y", ncol = 2) +
-  theme_minimal()+
-  theme(legend.position = "right")+
-  scale_color_brewer(palette = "Set1")
-
-ggplot(rc_plot_df, aes(x = Sample, y = Species, color = phylum, group = paste(Index,phylum))) +
-  geom_line() +
-  #geom_vline(xintercept = 50000, colour = "darkred") +
-  facet_wrap(~Sampler, scales = "free_y") +
-  theme_minimal()+
-  theme(legend.position = "right")+
-  scale_color_brewer(palette = "Set1")
-
 ```
 
-Sequencing depth varied between samples but reached saturation in all cases for all target taxa. 
-
-# clean data
-
-9F2control2 got contaminated during DNA extraction --> could not be used as Blank anymore. Sample removed
-1DK5 → Filter dropped on the floor. Only kept buffer (not filter paper) but most particles seemed to be in buffer (turbid)
-1DD30 → No liquid left after 1st Lysis. No supernatent could be transferred
-1CD_ → No liquid left after 1st Lysis. No supernatent could be transferred
-1DB30 → Only small amount of liquid → ½ transferred.
-8RH5 quite some buffer missing. Added less beads (ca ½) as I was afraid that the full amount would absorb the remaining supernatent. 
-
-Plate1:
-Pipetted some of column 2 in column 1?
-
-Well E3 only very little liquid in
-
-## index hopping
-
-We demultiplexed with all indicies (full Plate) but not all were used. Unused indices should not have been found but could be present in the data due to random mutations and Maximum likelihood index-assignment (should be rare as we use dual indices)
+Plot rarefaction curves faceted by phylum.
 
 ```{r}
-index_hop <- 
-Fungi_ASV %>%
+ggplot(rc_plot_df, aes(x = Sample, y = Species, color = duration, group = Index)) +
+  geom_line() +
+  facet_wrap(~phylum, scales = "free_y", ncol = 2) +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Sequencing depth", y = "ASV richness")
+```
+
+Plot rarefaction curves faceted by sampler.
+
+```{r}
+ggplot(rc_plot_df, aes(x = Sample, y = Species, color = phylum, group = paste(Index, phylum))) +
+  geom_line() +
+  facet_wrap(~Sampler, scales = "free_y") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Sequencing depth", y = "ASV richness")
+```
+
+Sequencing depth varied between samples but reached saturation in all cases for all target taxa.
+
+# Clean data
+
+## Known sample issues
+
+Sample notes from lab records:
+- 9F2control2 got contaminated during DNA extraction (cannot be used as blank)
+- 1DK5: Filter dropped on floor, only buffer kept
+- 1DD30: No liquid left after 1st lysis
+- 1CD_: No liquid left after 1st lysis
+- 1DB30: Only small amount of liquid, half transferred
+- 8RH5: Some buffer missing, reduced beads
+- Plate1: Possible pipetting error column 1/2
+- Well E3: Very little liquid
+
+## Index hopping
+
+Check for reads in unused indices (should be absent but can occur due to index hopping).
+
+```{r}
+index_hop <-
+  Fungi_ASV %>%
   filter(!Index %in% Meta$Index) %>%
-  pivot_longer(-Index) %>% 
+  pivot_longer(-Index) %>%
   filter(value > 0)
 
 index_hop
 ```
 
-5 unused indices have any reads, with the maximum being 2 reads
+Five unused indices have reads (maximum 2 reads per index).
 
 ```{r}
-Fungi_ASV %>% 
-  select(unique(index_hop$name)) %>% 
+Fungi_ASV %>%
+  select(unique(index_hop$name)) %>%
   colSums()
 ```
 
-all reads are from highly abundant ASVs, indicating a low but existing level of index-hopping
-
-we remove the unused indices from the ASV table
+All reads are from highly abundant ASVs, indicating low-level index hopping. Remove unused indices from ASV table.
 
 ```{r}
 Fungi_ASV <-
   Fungi_ASV %>%
-  filter(Index %in%  
-           {filter(Meta, Sample_names != "BLANK8") %>%  #this blank got massivley contaminated 
+  filter(Index %in%
+           {filter(Meta, Sample_names != "BLANK8") %>%
              pull(Index)
-             } 
+             }
          )
 ```
 
+## Check controls
 
-##check controls
+### Decontam (prevalence-based)
 
-### decontam
+Define which samples are blanks. Field controls are set to NA (excluded) as they contain genuine environmental sequences.
 
 ```{r}
-# define which samples are blanks
-
-# we set field controls to NA (which excludes them) as they have been exposed and contain genuine sequences. We look at this in the next step. 
-
-Blanks <- 
-Meta %>% 
-  filter(Index %in% Fungi_ASV$Index) %>% #samples with zero reads are missing from the ASV table
-  select(Index, Sample_names, Type) %>% 
-  filter(Sample_names != "BLANK8") %>% #this blank got massivley contaminated (see below)
+Blanks <-
+  Meta %>%
+  filter(Index %in% Fungi_ASV$Index) %>%
+  select(Index, Sample_names, Type) %>%
+  filter(Sample_names != "BLANK8") %>%
   mutate(is_neg = case_when(Type %in% c("active", "passive") ~ FALSE,
                             Type %in% c("extr_control", "PCR_control") ~ TRUE,
-                            Type == "field_control" ~ NA)) %>% 
-  arrange(Index) 
+                            Type == "field_control" ~ NA)) %>%
+  arrange(Index)
 
-
-#check that sample order is matching 
 all(Fungi_ASV$Index == Blanks$Index)
+```
 
-#run decontam
-contamdf.prev <- isContaminant(as.matrix(Fungi_ASV[,-1]), 
-                               neg = Blanks$is_neg, 
-                               method="prevalence")
+Run decontam with prevalence method.
 
-p_thresholds = seq(1,0,-0.001)
+```{r}
+contamdf.prev <- isContaminant(as.matrix(Fungi_ASV[,-1]),
+                               neg = Blanks$is_neg,
+                               method = "prevalence")
 
-# Compute the number of contaminants for each threshold
+p_thresholds <- seq(1, 0, -0.001)
+
 contam_counts <- purrr::map_df(p_thresholds, function(x) {
   tibble(
     p_threshold = x,
     num_contaminants = sum(contamdf.prev$p < x, na.rm = TRUE)
   )
 })
+```
 
-# Plot the results
+Plot number of contaminants identified across p-value thresholds.
+
+```{r}
 ggplot(contam_counts, aes(x = p_threshold, y = num_contaminants)) +
-  geom_point(size = 0.1)+
+  geom_point(size = 0.1) +
   geom_smooth(linewidth = 0.5, color = "red") +
-  geom_vline(xintercept = 0.1, colour = "blue")+
+  geom_vline(xintercept = 0.1, colour = "blue") +
   labs(
     title = "Prevalence-based contaminant detection",
     x = "P-value Threshold",
     y = "Number of Contaminants"
   ) +
-  theme_minimal()+
+  theme_minimal() +
   scale_x_reverse()
 ```
 
+Extract contaminant sequences at p < 0.1 threshold.
 
 ```{r}
-contam_seqs <- 
-contamdf.prev %>% 
-  filter(p < 0.1) %>% 
+contam_seqs <-
+  contamdf.prev %>%
+  filter(p < 0.1) %>%
   tibble::rownames_to_column("seq")
-
 ```
 
+Decontam identifies no contaminants at p < 0.1.
 
-decontam identifies no contamninants.
+### Visualize control contamination
 
-
-visualize contaminant sequences as abundance ratio between blanks and sample
+Compute mean and max abundance ratios between controls and samples.
 
 ```{r}
-cont_ratio <- 
-Fungi_ASV %>% 
-  pivot_longer(-Index, names_to = "seq") %>% 
-  left_join(Meta) %>% 
-  select(Index, seq, Sample_names, Type, value) %>% 
+cont_ratio <-
+  Fungi_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  left_join(Meta) %>%
+  select(Index, seq, Sample_names, Type, value) %>%
   mutate(Type = case_when(Type %in% c("active", "passive") ~ "Sample",
-                            Type %in% c("extr_control", "PCR_control") ~ "Lab",
-                            Type == "field_control" ~ "Field")) %>% 
-  group_by(Type, seq) %>% 
-  summarise(mean_val = round(mean(value),2),
-            max_val = max(value)) %>% 
-  pivot_longer(one_of(c("mean_val", "max_val"))) %>% 
-  pivot_wider(names_from = Type, values_from = value) %>% 
-  filter(Lab > 0 | Field > 0) %>% 
-  pivot_longer(!one_of("seq", "Sample", "name"), names_to= "Type") %>%
-  mutate(ratio = round(value/Sample,3))
+                          Type %in% c("extr_control", "PCR_control") ~ "Lab",
+                          Type == "field_control" ~ "Field")) %>%
+  group_by(Type, seq) %>%
+  summarise(mean_val = round(mean(value), 2),
+            max_val = max(value)) %>%
+  pivot_longer(one_of(c("mean_val", "max_val"))) %>%
+  pivot_wider(names_from = Type, values_from = value) %>%
+  filter(Lab > 0 | Field > 0) %>%
+  pivot_longer(!one_of("seq", "Sample", "name"), names_to = "Type") %>%
+  mutate(ratio = round(value/Sample, 3))
 
-Field_only <- 
-cont_ratio %>% 
-  filter(Type == "Field") %>% 
+Field_only <-
+  cont_ratio %>%
+  filter(Type == "Field") %>%
   filter(value > 0)
 
-Lab_only <- 
-cont_ratio %>% 
-  filter(Type == "Lab") %>% 
+Lab_only <-
+  cont_ratio %>%
+  filter(Type == "Lab") %>%
   filter(value > 0)
 ```
 
+### Lab controls
 
-###lab controls
-
-one blank (blank 8) got contaminated by a sample. it cannot serve as a blank and is excluded
+Blank8 got contaminated by a sample and is excluded. Count unique sequences in lab controls.
 
 ```{r}
-Lab_only$seq %>% unique %>% length()
+Lab_only$seq %>% unique() %>% length()
 ```
 
+Count sequences with ratio > 1 (more abundant in controls than samples).
+
 ```{r}
-Lab_only %>% 
-  filter(name == "mean_val") %>% 
-  filter(ratio > 1) %>% 
+Lab_only %>%
+  filter(name == "mean_val") %>%
+  filter(ratio > 1) %>%
   nrow()
 ```
 
+Plot heatmap of contaminant sequences in lab controls.
 
 ```{r}
-Fungi_ASV %>% 
-  pivot_longer(-Index, names_to = "seq") %>% 
-  filter(seq %in% unique(Lab_only$seq)) %>% 
-  left_join(Meta) %>% 
-  filter(Type %in% c("extr_control", "PCR_control")) %>% 
-  group_by(seq) %>% 
-  filter(sum(value) > 0) %>% 
+Fungi_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  filter(seq %in% unique(Lab_only$seq)) %>%
+  left_join(Meta) %>%
+  filter(Type %in% c("extr_control", "PCR_control")) %>%
+  group_by(seq) %>%
+  filter(sum(value) > 0) %>%
   left_join(
-        {filter(cont_ratio, 
-                Type == "Lab",
-                name == "mean_val") %>% 
-            select(seq, ratio)
-            }
-  ) %>% 
-  mutate(ratio = ifelse(value == 0, NA, ratio)) %>% 
-  left_join(Fungi_tax) %>% 
-  mutate(spec_name = 
+    {filter(cont_ratio,
+            Type == "Lab",
+            name == "mean_val") %>%
+        select(seq, ratio)
+        }
+  ) %>%
+  mutate(ratio = ifelse(value == 0, NA, ratio)) %>%
+  left_join(Fungi_tax) %>%
+  mutate(spec_name =
            case_when(!is.na(species) ~ paste(species, seq, sep = " "),
                      !is.na(genus) ~ paste(genus, "sp.", seq, sep = " "),
                      !is.na(family) ~ paste(family, "(fam)", seq, sep = " "),
@@ -359,1049 +364,1073 @@ Fungi_ASV %>%
                      !is.na(class) ~ paste(class, "(cl)", seq, sep = " "),
                      !is.na(phylum) ~ paste(phylum, "(ph)", seq, sep = " "),
                      TRUE ~ seq)) %>%
-  ggplot(aes(x = Sample_names, y = spec_name, fill = ratio))+
-  geom_tile()+
-  scale_fill_viridis_c(na.value = "white")+
-  theme(axis.text.x = element_text(angle = 90, hjust = 0))
+  ggplot(aes(x = Sample_names, y = spec_name, fill = ratio)) +
+  geom_tile() +
+  scale_fill_viridis_c(na.value = "white") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "Sample", y = "Taxon", fill = "Ratio\n(Control/Sample)")
 ```
 
+There are 28 sequences present across extraction blanks and PCR negatives. Six are more abundant in controls than samples (clear contaminants). The remaining are likely cross-contamination from true OTUs.
 
+### Field controls
 
-There are 28 sequences present across extraction blanks and pcr negatives. 6 are present in higher average abundance in the PCR negatives than in the samples - these are clear contaminants. 
-
-The remaining are more likely the result cross-contamination (i.e. true OTUs that contaminated a blank)
-
-###field controls
+Count unique sequences in field controls.
 
 ```{r}
-Field_only$seq %>% unique %>% length()
+Field_only$seq %>% unique() %>% length()
 ```
 
+Count sequences with ratio > 1.
 
 ```{r}
-Field_only %>% 
-  filter(name == "mean_val") %>% 
-  filter(ratio > 1) %>% 
+Field_only %>%
+  filter(name == "mean_val") %>%
+  filter(ratio > 1) %>%
   nrow()
 ```
 
+Count sequences with ratio > 10.
+
 ```{r}
-Field_only %>% 
-  filter(name == "mean_val") %>% 
-  filter(ratio > 10) %>% 
+Field_only %>%
+  filter(name == "mean_val") %>%
+  filter(ratio > 10) %>%
   nrow()
 ```
 
-there are a total of 542 sequences present across the 14 field blanks. 
+There are 542 sequences present across 14 field blanks, with 223 more abundant in controls than samples (119 with ratio > 10).
 
-There are also 223 sequences present with higher abundance in the controls than in any sample, in 119 of which the sequence is 10X more abundant in the field control than in any sample
+Create field control dataset for visualization.
 
 ```{r}
-Field_cont <- 
-Fungi_ASV %>% 
-  pivot_longer(-Index, names_to = "seq") %>% 
-  filter(seq %in% unique(Field_only$seq)) %>% 
-  left_join(Meta) %>% 
-  filter(Type == "field_control") %>% 
-  filter(value > 0) %>% 
+Field_cont <-
+  Fungi_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  filter(seq %in% unique(Field_only$seq)) %>%
+  left_join(Meta) %>%
+  filter(Type == "field_control") %>%
+  filter(value > 0) %>%
   left_join(
-        {filter(cont_ratio, Type == "Field",
-                name == "mean_val") %>% 
-            select(seq, ratio)
-            }
-  ) 
-
-Field_cont %>% 
-  mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>% 
-  ggplot(aes(x = Sampler, y = value, colour = ratio_cat))+
-  geom_point(position = position_jitterdodge(jitter.width =  0.2, dodge.width = 0.6))+
-  scale_fill_viridis_c()+
-  scale_y_log10()+
-  scale_color_brewer(palette = "Set1")+
-  theme(axis.text.x = element_text(angle = 90, hjust = 0))+
-  theme_minimal()+
-  coord_flip()
+    {filter(cont_ratio, Type == "Field",
+            name = "mean_val") %>%
+        select(seq, ratio)
+        }
+  )
 ```
 
+Plot contamination levels by sampler.
+
 ```{r}
-Field_cont %>% 
-  mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>% 
-  group_by(ratio_cat, Sampler) %>% 
-  summarise(n = n()) %>% 
-  ggplot(aes(x = Sampler, y = n, colour = ratio_cat))+
-  geom_point(position = position_dodge(width = 0.4), size = 3, shape = 21)+
-  scale_color_brewer(palette = "Set1")+
-  theme_minimal()+
-  coord_flip()
+Field_cont %>%
+  mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>%
+  ggplot(aes(x = Sampler, y = value, colour = ratio_cat)) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.6)) +
+  scale_y_log10() +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "Sampler", y = "Reads in field control", colour = "Ratio")
 ```
 
+Plot number of contaminant OTUs by sampler.
 
 ```{r}
-Field_cont %>% 
-  group_by(Sampler) %>% 
+Field_cont %>%
+  mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>%
+  group_by(ratio_cat, Sampler) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(x = Sampler, y = n, colour = ratio_cat)) +
+  geom_point(position = position_dodge(width = 0.4), size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "Sampler", y = "Number of OTUs", colour = "Ratio")
+```
+
+Count total OTUs per sampler in field controls.
+
+```{r}
+Field_cont %>%
+  group_by(Sampler) %>%
   summarise(n = n())
 ```
 
+Summarize contamination by ratio categories.
+
 ```{r}
-Field_cont %>% 
+Field_cont %>%
   mutate(ratio_cat = case_when(
     ratio < 1 ~ "< 1",
-    ratio > 1 & ratio < 10 ~ "> 01",
-    ratio > 10 ~ "> 10")) %>% 
-  group_by(ratio_cat, Sampler) %>% 
-  summarise(n = n()) %>% 
+    ratio > 1 & ratio < 10 ~ "> 1",
+    ratio > 10 ~ "> 10")) %>%
+  group_by(ratio_cat, Sampler) %>%
+  summarise(n = n()) %>%
   pivot_wider(names_from = ratio_cat, values_from = n, values_fill = 0)
 ```
 
-There is significant differences between the number of sequences detected in the field blanks across samplers. 
+There are significant differences in contamination levels across samplers. Passive methods have very low detection (6-7 OTUs). Burkhart, Coriolis, and Sass have 4-19 OTUs. Kärcher, Electrostatic, HEPA, and Drone have 89-310 OTUs. For Kärcher, most OTUs have ratio < 1 (likely environmental not contaminant). Drone, Electrostatic, and HEPA show high ratios indicating true contamination.
 
-The two passive methods have very low number of detentions (6 & 7 OTUs respectively) - but for these two the field samples were 'carried-along' but not opened in the field. 
+### Export contamination summary
 
-The Burkhard, the Coriolis and the Sass have 4, 13 and 19 OTUS in the field control - respectively. 
-
-The Kärcher, the Electrostatic and the HEPA sampler (as well as the Drone sampler) have between 89 (Drone) and 310 (HEPA) OTUs as contaminants. 
-
-Notably, for the Kärcher - and to a lesser extend for the HEPA - abundance in the control is below abundance in the samples (ratio < 1). For the Kärcher, only five sequences are more abundant in the control than in the sample. 
-
-The Drone, the Electrostatic amd the HEPA have a significant number of OTUs with much higher abundances in the control than in the sample. These are likely contaminants and need to be excluded. 
-
-
-#exclude contaminats
-
-I follow the following rules for excluding contaminants 
-
-1) For every OTU present in any laboratory negative control we remove twice the number of the maximum reads from all samples. 
-
-2) For every OTU present in a field negative control at higher average abundance than in a the samples  we remove twice the max number of reads from all samples. 
-
-3) OTUs present in the field negative control at lower average abundance than in the sample are kept untouched. 
+Create contamination summary table for cross-group comparison.
 
 ```{r}
-Remove_reads_lab <- 
-  Lab_only %>% 
-  filter(name == "max_val") %>% 
-  select(seq, value) 
+cont_summary_lab <-
+  Lab_only %>%
+  filter(name == "mean_val") %>%
+  summarise(
+    n_OTUs_lab = n(),
+    n_ratio_gt1_lab = sum(ratio > 1),
+    total_reads_lab = sum(value)
+  )
 
-Remove_reads_field <- 
-Field_only %>% 
-  group_by(seq) %>% 
-  filter(min(ratio) > 1) %>% 
-  ungroup() %>% 
-  filter(name == "max_val") %>% 
+cont_summary_field <-
+  Field_cont %>%
+  group_by(Sampler) %>%
+  summarise(
+    n_OTUs_field = n(),
+    n_ratio_gt1 = sum(ratio > 1),
+    n_ratio_gt10 = sum(ratio > 10),
+    total_reads_field = sum(value)
+  ) %>%
+  mutate(taxon = "Fungi")
+
+cont_summary <-
+  cont_summary_field %>%
+  bind_cols(cont_summary_lab) %>%
+  select(taxon, Sampler, n_OTUs_field, n_ratio_gt1, n_ratio_gt10,
+         total_reads_field, n_OTUs_lab, n_ratio_gt1_lab)
+```
+
+Create derived data directory if needed and export.
+
+```{r}
+if(!dir.exists(here("Data", "derived"))) {
+  dir.create(here("Data", "derived"))
+}
+
+write_tsv(cont_summary, here("Data", "derived", "Fungi_contamination.tsv"))
+```
+
+## Exclude contaminants
+
+Remove reads from contaminant OTUs using 2× max subtraction method. For lab controls: subtract from all samples. For field controls: only subtract if ratio > 1.
+
+```{r}
+Remove_reads_lab <-
+  Lab_only %>%
+  filter(name == "max_val") %>%
   select(seq, value)
 
-Remove_reads <- 
-  bind_rows(Remove_reads_lab, 
-            Remove_reads_field) %>% 
-  group_by(seq) %>% 
-  filter(value == max(value)) %>% #in case an OTU occured in both lab and field controls
-  mutate(seq_remove = value * 2) %>% #remove twice the average number of reads in the control
-  mutate(seq_remove = ceiling(seq_remove)) #round up to next higher integer
+Remove_reads_field <-
+  Field_only %>%
+  group_by(seq) %>%
+  filter(min(ratio) > 1) %>%
+  ungroup() %>%
+  filter(name == "max_val") %>%
+  select(seq, value)
 
-Fungi_mat <- as.matrix(Fungi_ASV[,-1]) # matrix of reads
-Remove_mat <- Fungi_mat # matrix of same size
-Remove_mat[] <- 0 # filled with 0s
-Remove_mat[,Remove_reads$seq] <- rep(Remove_reads$seq_remove, each = nrow(Remove_mat)) #fill with reads to remove (colwise)
+Remove_reads <-
+  bind_rows(Remove_reads_lab,
+            Remove_reads_field) %>%
+  group_by(seq) %>%
+  filter(value == max(value)) %>%
+  mutate(seq_remove = ceiling(value * 2))
 
-Fungi_mat_clean <- Fungi_mat - Remove_mat #remove reads
+Fungi_mat <- as.matrix(Fungi_ASV[,-1])
+Remove_mat <- Fungi_mat
+Remove_mat[] <- 0
+Remove_mat[, Remove_reads$seq] <- rep(Remove_reads$seq_remove, each = nrow(Remove_mat))
 
+Fungi_mat_clean <- Fungi_mat - Remove_mat
 Fungi_mat_clean[Fungi_mat_clean < 0] <- 0
 ```
 
-remove empty OTUS
+Remove empty OTUs after contamination subtraction.
+
 ```{r}
-Fungi_mat_clean <- Fungi_mat_clean[, colSums(Fungi_mat_clean) > 0] # remove empty sequences
+Fungi_mat_clean <- Fungi_mat_clean[, colSums(Fungi_mat_clean) > 0]
 ```
 
+Count OTUs removed.
+
 ```{r}
-ncol(Fungi_mat) -ncol(Fungi_mat_clean)
+ncol(Fungi_mat) - ncol(Fungi_mat_clean)
 ```
 
-208 sequences were removed from all samples
+208 sequences were removed from all samples.
 
-back-transform to tibble and add back sample index
+Convert back to tibble and add sample index.
 
 ```{r}
-
-Fungi_ASV <- 
-as_tibble(Fungi_mat_clean) %>% #transform back to tibble
-  bind_cols(select(Fungi_ASV, "Index"), .) #add Sample Index back
-
+Fungi_ASV <-
+  as_tibble(Fungi_mat_clean) %>%
+  bind_cols(select(Fungi_ASV, "Index"), .)
 ```
 
-remove controls from ASV data
+Remove control samples from ASV table.
 
 ```{r}
-blank_index <- 
-  Meta %>% 
-  filter(!Type %in% c("active", "passive")) %>% 
+blank_index <-
+  Meta %>%
+  filter(!Type %in% c("active", "passive")) %>%
   pull(Index)
 
-Fungi_ASV <- 
-Fungi_ASV %>% 
+Fungi_ASV <-
+  Fungi_ASV %>%
   filter(!Index %in% blank_index)
 ```
 
+## Check for empty samples
 
-check for empty samples
+Count reads per sample after cleaning.
 
 ```{r}
-
-Sample_reads <- 
-Fungi_ASV %>% 
-  pivot_longer(-Index) %>% 
-  group_by(Index) %>% 
-  summarise(value = sum(value)) %>% 
-  arrange(value) %>% 
+Sample_reads <-
+  Fungi_ASV %>%
+  pivot_longer(-Index) %>%
+  group_by(Index) %>%
+  summarise(value = sum(value)) %>%
+  arrange(value) %>%
   left_join(Meta)
 
 Sample_reads
-
 ```
-two samples have no (or < 1000) reads left after clean-up: 
 
-1) one Drone Sample (1DD30)
-2) a split Burkhard sample 1DB30_1
-
-I remove both sample for downstream analysis
-
-all other samples have >29'000 reads 
+Two samples have < 1000 reads: 1DD30 (Drone) and 1DB30_1 (Burkhart split). Remove these samples. All others have > 29000 reads.
 
 ```{r}
-empty_samples <- 
-  Sample_reads %>% 
-  filter(value < 1000) %>% 
+empty_samples <-
+  Sample_reads %>%
+  filter(value < 1000) %>%
   pull(Index)
-  
-Fungi_ASV <- 
-Fungi_ASV %>%
+
+Fungi_ASV <-
+  Fungi_ASV %>%
   filter(!Index %in% empty_samples)
 ```
 
+Create long format ASV table.
+
 ```{r}
-Fungi_ASV_long <- 
+Fungi_ASV_long <-
   pivot_longer(Fungi_ASV, -Index, names_to = "seq", values_to = "reads")
 ```
 
+# Subset for target group
 
-##subset for Fungi only
+Filter taxonomy table to retain only sequences in cleaned ASV table.
 
 ```{r}
-Fungi_tax <- 
-  Fungi_tax %>% 
+Fungi_tax <-
+  Fungi_tax %>%
   filter(seq %in% colnames(Fungi_ASV))
 ```
 
+Visualize reads and OTUs by kingdom and phylum.
 
 ```{r}
-Fungi_ASV_long %>% 
-  group_by(seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  left_join(Fungi_tax) %>% 
-  group_by(kingdom, phylum) %>% 
-  summarise(n_OTUs = n(), 
-            reads = sum(reads)) %>% 
-  pivot_longer(one_of(c("n_OTUs", "reads"))) %>% 
+Fungi_ASV_long %>%
+  group_by(seq) %>%
+  summarise(reads = sum(reads)) %>%
+  left_join(Fungi_tax) %>%
+  group_by(kingdom, phylum) %>%
+  summarise(n_OTUs = n(),
+            reads = sum(reads)) %>%
+  pivot_longer(one_of(c("n_OTUs", "reads"))) %>%
   ggplot(aes(x = phylum, y = value)) +
-  facet_grid(kingdom~name, scales = "free", space = "free")+
-  geom_bar(stat = "identity")+
-  coord_flip()+
-  scale_y_log10()+
+  facet_grid(kingdom~name, scales = "free", space = "free") +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_y_log10() +
+  theme_minimal() +
   theme(axis.text.x = element_text(angle = 90))
 ```
 
-The primers pick up more than only Fungi. Notably they pick up also a lot of plants (mostly Tracheophyta). 
-
-For this comparison we keep only sequences that are assigned to the kingdom "Fungi" and are assigned at phylum level 
+The primers amplify more than fungi. Notably, many plant sequences (Tracheophyta) are present. For this analysis, retain only sequences assigned to kingdom Fungi with phylum-level identification.
 
 ```{r}
-Fungi_seq <- 
-Fungi_tax %>% 
-  filter(kingdom == "Fungi") %>% 
-  filter(!is.na(phylum)) %>% 
+Fungi_seq_keep <-
+  Fungi_tax %>%
+  filter(kingdom == "Fungi") %>%
+  filter(!is.na(phylum)) %>%
   pull(seq)
 ```
 
-```{r}
-ncol(Fungi_ASV[,-1]) - length(Fungi_seq)
-```
-this excludes 6000 OTUs
+Count excluded OTUs.
 
 ```{r}
-Fungi_ASV_long %>% 
-  group_by(seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  left_join(Fungi_tax) %>% 
+ncol(Fungi_ASV[,-1]) - length(Fungi_seq_keep)
+```
+
+This excludes 6000 OTUs.
+
+Compute proportion of reads and sequences retained.
+
+```{r}
+Fungi_ASV_long %>%
+  group_by(seq) %>%
+  summarise(reads = sum(reads)) %>%
+  left_join(Fungi_tax) %>%
   mutate(cat = case_when(kingdom == "Fungi" & !is.na(phylum) ~ "Fungi",
                          kingdom == "Fungi" & is.na(phylum) ~ "na_Fungi",
-                         kingdom != "Fungi" ~ kingdom)) %>% 
-  group_by(cat) %>% 
+                         kingdom != "Fungi" ~ kingdom)) %>%
+  group_by(cat) %>%
   summarise(reads = sum(reads),
-            n_seq = n()) %>% 
-  mutate(reads_prct = signif(reads/sum(reads)*100,2),
-         seq_prct = signif(n_seq/sum(n_seq)*100,2),)
-```
-this keeps 59% of the sequences accounting for 78% of the reads. The largest group of excluded sequences is Plantea with 9.5% of the sequences corresponding to 20% of the reads.
-
-```{r}
-Fungi_ASV_clean <- 
-  Fungi_ASV %>% 
-  select(one_of("Index", Fungi_seq))
+            n_seq = n()) %>%
+  mutate(reads_prct = signif(reads/sum(reads)*100, 2),
+         seq_prct = signif(n_seq/sum(n_seq)*100, 2))
 ```
 
+This keeps 59% of sequences accounting for 78% of reads. The largest excluded group is Plantae (9.5% of sequences, 20% of reads).
+
+Create cleaned ASV table with fungi only.
 
 ```{r}
-Fungi_ASV_clean_long <- 
+Fungi_ASV_clean <-
+  Fungi_ASV %>%
+  select(one_of("Index", Fungi_seq_keep))
+
+Fungi_ASV_clean_long <-
   pivot_longer(Fungi_ASV_clean, -Index, names_to = "seq", values_to = "reads")
 ```
 
+# Prevalence
 
-#prevalence
-```{r}
-Fungi_ASV_clean_long %>% 
-  filter(reads > 0) %>% 
-  group_by(seq) %>%
-  summarise(prev = n()) %>% 
-  ggplot(aes(x = prev))+
-  geom_histogram(binwidth = 5, fill = NA, color = "darkred")+
- # scale_y_log10()+
-  theme_minimal()
-```
-
-
-
-## Species richness
+Plot prevalence distribution (number of samples per OTU).
 
 ```{r}
 Fungi_ASV_clean_long %>%
-  left_join(Fungi_tax) %>% 
-  select(seq, phylum) %>% 
-  distinct() %>% 
-  group_by(phylum) %>% 
+  filter(reads > 0) %>%
+  group_by(seq) %>%
+  summarise(prev = n()) %>%
+  ggplot(aes(x = prev)) +
+  geom_histogram(binwidth = 5, fill = NA, color = "darkred") +
+  theme_minimal() +
+  labs(x = "Prevalence (number of samples)", y = "Number of OTUs")
+```
+
+# Species richness
+
+Count OTUs by phylum in cleaned dataset.
+
+```{r}
+Fungi_ASV_clean_long %>%
+  left_join(Fungi_tax) %>%
+  select(seq, phylum) %>%
+  distinct() %>%
+  group_by(phylum) %>%
   summarise(n = n())
-  
 ```
 
-
+Compute rarefaction curves on cleaned dataset.
 
 ```{r}
+rar_curve <-
+  Fungi_ASV_clean %>%
+  select(-Index) %>%
+  as.matrix() %>%
+  `rownames<-`(Fungi_ASV_clean$Index) %>%
+  rarecurve(x = ., step = 1000, tidy = TRUE)
 
-rar_curve <- 
-Fungi_ASV_clean %>% 
-  select(-Index) %>% 
-  as.matrix %>% 
-  `rownames<-`(Fungi_ASV_clean$Index) %>% 
-  rarecurve(x = .,step = 1000, tidy = TRUE)
-
-rar_curve %>% 
-  left_join(Meta, by = c("Site" = "Index")) %>% 
-  filter(grepl("active|passive", Type)) %>% 
+rar_curve %>%
+  left_join(Meta, by = c("Site" = "Index")) %>%
+  filter(grepl("active|passive", Type)) %>%
   ggplot(aes(x = Sample, y = Species, group = Site, colour = duration)) +
-  geom_line()+
-  facet_wrap(~Sampler)
-
+  geom_line() +
+  facet_wrap(~Sampler) +
+  theme_minimal() +
+  labs(x = "Sequencing depth", y = "Observed richness")
 ```
 
+Compute observed richness per sample.
+
 ```{r}
+S_df <-
+  Fungi_ASV_clean_long %>%
+  group_by(Index) %>%
+  filter(reads > 0) %>%
+  summarise(S = n()) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  mutate(Sampler = factor(Sampler, levels = c("Kärcher", "Coriolis", "Sass", "Hepa",
+                                               "Burkhart", "Electrostatic", "MWAC",
+                                               "WSL_Filter"))) %>%
+  mutate(taxon = "Fungi")
+```
 
-S_df <- 
-Fungi_ASV_clean_long %>% 
-  group_by(Index) %>% 
-  filter(reads > 0) %>% 
-  summarise(S = n()) %>% 
-  left_join(Meta) %>% 
-  filter(Sampler != "Drone") %>% 
-  mutate(Sampler = factor(Sampler, levels= unique(.$Sampler)[c(8,1,3,2,5,6,4,7)])) 
+Plot richness by sampler, duration, and site.
 
-S_df %>% 
- mutate(Sampler = factor(Sampler, levels =  c("Kärcher","Coriolis", "Sass", "Hepa",
-                                             "Burkhart", "Electrostatic", "MWAC",
-                                            "WSL_Filter"))) %>%
-  ggplot(aes(y = S, x = duration,  colour = Sites))+
-  facet_grid(~Sampler, scales = "free_x")+
-  geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
-  geom_point()+
-  theme_minimal()+
-  scale_color_brewer(palette = "Set1")+
+```{r}
+S_df %>%
+  ggplot(aes(y = S, x = duration, colour = Sites)) +
+  facet_grid(~Sampler, scales = "free_x") +
+  geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
+  geom_point() +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom")
+        legend.position = "bottom") +
+  labs(x = "Duration", y = "Observed richness (S)")
 ```
 
-#comparision with Burkhard
+## Formal statistical model
+
+Fit generalized linear model for richness.
 
 ```{r}
-S_df %>% 
-  filter(duration != "30 min") %>% 
-  select(Sites, Sampler, S) %>% 
-  pivot_wider(names_from = Sampler, values_from = S) %>% 
-  mutate(across(!one_of("Sites"), ~.x/Burkhart)) %>% 
-  pivot_longer(-Sites) %>% 
-  group_by(name) %>% 
-  summarise(mean = round(mean(value),1), sd = round(sd(value),1))
+S_df_model <-
+  S_df %>%
+  filter(!is.na(S))
+
+richness_glm <- glm(S ~ Sampler * duration + Sites,
+                    data = S_df_model,
+                    family = poisson(link = "log"))
+
+summary(richness_glm)
 ```
 
+Extract predicted richness and confidence intervals.
 
-export richness
 ```{r}
-# S_df %>% 
-#   mutate(taxon = "Fungi") %>% 
-#   write_tsv(here("Data", "Fungi_richness.txt"))
+richness_pred <-
+  S_df_model %>%
+  mutate(pred_S = predict(richness_glm, type = "response"),
+         pred_SE = predict(richness_glm, se.fit = TRUE, type = "response")$se.fit,
+         pred_lower = pred_S - 1.96 * pred_SE,
+         pred_upper = pred_S + 1.96 * pred_SE)
+
+richness_pred %>%
+  select(Sampler, duration, Sites, S, pred_S, pred_lower, pred_upper) %>%
+  head(20)
 ```
 
-### richness vs air volume
+## Comparison with Burkhart
+
+Compute fold-differences relative to Burkhart at 5 hours.
 
 ```{r}
-flow_rate <- 
-  Meta %>% 
-  filter(Type == "active" & Sampler != "Drone") %>% 
-  select(Sampler, duration) %>% 
-  distinct() %>% 
+S_df %>%
+  filter(duration != "30 min") %>%
+  select(Sites, Sampler, S) %>%
+  pivot_wider(names_from = Sampler, values_from = S) %>%
+  mutate(across(!one_of("Sites"), ~.x/Burkhart)) %>%
+  pivot_longer(-Sites) %>%
+  group_by(name) %>%
+  summarise(mean = round(mean(value), 1), sd = round(sd(value), 1))
+```
+
+## Export richness data
+
+Export richness for cross-group figures.
+
+```{r}
+write_tsv(S_df, here("Data", "derived", "Fungi_richness.tsv"))
+```
+
+# Faith's phylogenetic diversity
+
+Placeholder for phylogenetic diversity analysis. Requires phylogenetic tree from FastTree (not yet built).
+
+```{r}
+if(exists("Fungi_tree")) {
+
+  # Prepare community matrix
+  comm_mat <-
+    Fungi_ASV_clean %>%
+    data.frame() %>%
+    `rownames<-`(.$Index) %>%
+    select(-Index) %>%
+    as.matrix()
+
+  # Compute Faith's PD
+  pd_result <- picante::pd(comm_mat, Fungi_tree, include.root = FALSE)
+
+  # Add to S_df
+  S_df <-
+    S_df %>%
+    left_join(
+      pd_result %>%
+        tibble::rownames_to_column("Index") %>%
+        select(Index, PD)
+    )
+
+  # Plot PD by sampler, duration, and site
+  S_df %>%
+    ggplot(aes(y = PD, x = duration, colour = Sites)) +
+    facet_grid(~Sampler, scales = "free_x") +
+    geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
+    geom_point() +
+    theme_minimal() +
+    scale_color_brewer(palette = "Set1") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+          legend.position = "bottom") +
+    labs(x = "Duration", y = "Faith's PD")
+
+  # Export updated richness with PD
+  write_tsv(S_df, here("Data", "derived", "Fungi_richness.tsv"))
+
+} else {
+  message("Phylogenetic tree not available. Skipping Faith's PD analysis.")
+}
+```
+
+# Richness vs air volume
+
+Compute air volume for active samplers.
+
+```{r}
+flow_rate <-
+  Meta %>%
+  filter(Type == "active" & Sampler != "Drone") %>%
+  select(Sampler, duration) %>%
+  distinct() %>%
   mutate(flow = case_when(
     Sampler == "Hepa" ~ 60,
     Sampler == "Kärcher" ~ 3000,
     Sampler == "Sass" ~ 300,
     Sampler == "Coriolis" ~ 300,
     Sampler == "Electrostatic" ~ 10,
-    Sampler == "Burkhart" ~ 16.5,
-  )) %>% 
+    Sampler == "Burkhart" ~ 16.5
+  )) %>%
   mutate(air_vol = case_when(
-    duration == "30 min" ~ flow*30,
-    duration == "5 hours" ~ flow*5*60
+    duration == "30 min" ~ flow * 30,
+    duration == "5 hours" ~ flow * 5 * 60
   ))
 ```
 
+Plot richness vs air volume with linear model.
 
 ```{r}
-S_df %>% 
-  left_join(flow_rate) %>% 
-  filter(Type == "active" & Sampler != "Drone") %>% 
-  ggplot(aes(x = air_vol, y = S, colour = Sampler, shape = duration))+
-  #geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
-  geom_point()+
- # facet_grid(~duration)+
-  geom_smooth(aes(group = 1), method = "lm", colour = "darkblue", size = 0.2)+
-#  geom_smooth(aes(group = duration), method = "lm", colour = "darkred", size = 0.2, se = F)+
-  scale_x_log10()+
-  scale_color_brewer(palette = "Set1")+
-  theme_bw()
-  
-
+S_df %>%
+  left_join(flow_rate) %>%
+  filter(Type == "active" & Sampler != "Drone") %>%
+  ggplot(aes(x = air_vol, y = S, colour = Sampler, shape = duration)) +
+  geom_point() +
+  geom_smooth(aes(group = 1), method = "lm", colour = "darkblue", linewidth = 0.5) +
+  scale_x_log10() +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(x = "Air volume (L)", y = "Observed richness (S)")
 ```
 
-### richness corr
+Fit linear model for richness vs log air volume.
 
 ```{r}
-Cor_mat <- 
-S_df %>% 
-  left_join(flow_rate) %>% 
-  #filter(Type %in% c("active", "passive")) %>% 
-  mutate(Sampler = paste(Sampler, duration)) %>% 
-  arrange(Type, duration, desc(flow)) %>% 
-  #filter(duration == "5 hours") %>% 
-  select(Sites, Sampler, S) %>% 
-  pivot_wider(names_from = Sampler, values_from = S) %>% 
-  select(-Sites) %>% 
-  cor(method = "pearson") 
+S_vol_df <-
+  S_df %>%
+  left_join(flow_rate) %>%
+  filter(Type == "active" & Sampler != "Drone")
 
-
-
-{  
-Cor_mat %>% 
-  corrplot(type = "lower",diag = F,tl.col = "black", tl.cex = 0.8, method = "ellipse",
-           na.label = "square", na.label.col = "white")
-  
-rect(xleft = 0.5, ybottom = 8.5, xright = 5.5, ytop = 13.5, density = NULL, angle = 45,
-     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
-
-rect(xleft = 6.5, ybottom = 2.5, xright = 11.5, ytop = 7.5, density = NULL, angle = 45,
-     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
-
-}
-         
+vol_lm <- lm(S ~ log10(air_vol), data = S_vol_df)
+summary(vol_lm)
 ```
 
+# Sampling completeness
 
-### sample completeness
-```{r}
-ASV_sample_based <- 
-  Fungi_ASV_clean_long %>% 
-  left_join(Meta) %>% 
-  filter(Sampler != "Drone") %>% 
-  mutate(reads = as.numeric(reads> 0)) %>% 
-  select(Index, Sampler, duration, seq, reads) %>% 
-  pivot_wider(names_from = seq, values_from = reads)
-  
-site_rar_df <- 
-ASV_sample_based %>% 
-  split(~Sampler+duration) 
-
-site_rar_df <- 
-site_rar_df[unlist(lapply(site_rar_df, nrow))>0] %>% 
-  lapply(., function(x){
-    
-  if(nrow(x) > 0){res <- vegan::specaccum(x[,-c(1:3)])}
-    
-    resdf = tibble(sites = res$sites,
-                   Richness = res$richness,
-                   sd = res$sd)
-    
-    return(resdf)
-  })
-
-site_rar_df %>% 
-  bind_rows(.id = "var") %>% 
-  tidyr::separate_wider_delim(col = var, names = c("Sampler", "duration"), delim = ".") %>% 
-  ggplot(aes(x = sites, y = Richness, fill = duration))+
-  geom_line()+
-  geom_ribbon(aes(ymin = Richness - sd, ymax = Richness + sd), colouor = NULL, alpha = 0.5)+
-  facet_wrap(.~Sampler)+
-  scale_x_continuous(breaks = seq(1,8,1))
-```
-
-
-## Species comp
+Compute fraction of pooled 5h reference community captured per sampler × duration. Pool all samplers at each site for 5h as reference.
 
 ```{r}
-
-ASV_dist <- vegdist(Fungi_ASV_clean[,-1], method = "bray", binary = T)
-
-NMDS <- metaMDS(ASV_dist) 
-
-NMDS$points %>% 
-  as_tibble() %>% 
-  mutate(Index = Fungi_ASV_clean$Index) %>% 
-  left_join(Meta) %>% 
-#  filter(MDS1 < 100) %>% 
-  ggplot(aes(x = MDS1, y = MDS2, colour = Sampler))+
-  geom_point()+
-  facet_wrap(~duration)
-  
-```
-```{r}
-adonis2(ASV_dist~ Sampler + Sites + duration, 
-        data = Meta[Meta$Index %in% Fungi_ASV_clean$Index,],
-        by = "margin")
-
-betadisper(ASV_dist, group = Meta[Meta$Index %in% Fungi_ASV_clean$Index,]$Sites) %>% 
-  anova()
-
-betadisper(ASV_dist, group = Meta[Meta$Index %in% Fungi_ASV_clean$Index,]$Sampler) %>% 
-  anova()
-
-betadisper(ASV_dist, group = Meta[Meta$Index %in% Fungi_ASV_clean$Index,]$duration) %>% 
-  anova()
-```
-
-### similarity ranking
-
-```{r}
-ASV_dist_M <- as.matrix(ASV_dist)
-
-dimnames(ASV_dist_M) <- 
-  list(Fungi_ASV_clean$Index, Fungi_ASV_clean$Index) 
-
-diag(ASV_dist_M) <- NA
-
-Meta_comb1 <- 
-  Meta %>% 
-  mutate(comb1 = paste(Sampler, duration, Sites)) %>% 
-  select(Index, comb1)
-
-Meta_comb2 <- 
-  Meta %>% 
-  mutate(comb2 = paste(Sampler, duration, Sites)) %>% 
-  select(Index, comb2) %>% 
-  dplyr::rename(Index2 = Index)
-
-ASV_dist_df <-   
-ASV_dist_M %>% 
-  data.frame() %>% 
-  tibble::rownames_to_column(var = "Index") %>% 
-  pivot_longer(-Index, names_to = "Index2") %>% 
-  filter(!is.na(value)) %>% 
-  left_join(Meta_comb1) %>% 
-  left_join(Meta_comb2) 
-
-ASV_dist_cor <- 
-ASV_dist_df %>% 
-  filter(!grepl("Drone", comb1) & !grepl("Drone", comb2)) %>%
-  mutate(site_comb = paste(gsub(".+\\s(\\w+)$", "\\1", comb1),
-                           gsub(".+\\s(\\w+)$", "\\1", comb2),
-                           sep = "_")) %>% 
-  mutate(Sampler1 = gsub("(.+)\\s\\w+$", "\\1", comb1),
-         Sampler2 = gsub("(.+)\\s\\w+$", "\\1", comb2)) %>% 
-  filter(Sampler1 == Sampler2) %>% 
-  select(value, site_comb, Sampler1) %>% 
-  #group_by(site_comb, Sampler1) %>% 
-  #filter(n() > 1)
-  pivot_wider(names_from = Sampler1, values_from = value) %>% 
-  select(-site_comb) %>% 
-  distinct() %>% 
-  select(rownames(Cor_mat)) %>% 
-  cor(method = "pearson") %>% 
-  #cor(method = "kendall") %>% 
-  {.}
-                              
-ASV_dist_cor %>% 
-  corrplot(type = "lower",diag = F,tl.col = "black", tl.cex = 0.8, method = "ellipse",
-           na.label = "square", na.label.col = "white")
-
-```
-
-
-## Venn diagramm
-```{r}
-sampler_venn <- 
-Fungi_ASV_clean_long %>%
-  left_join(Fungi_tax) %>% 
-  left_join(Meta) %>% 
-  filter(Sampler != "Drone") %>% 
-  filter(duration %in% c("30 min", "5 hours")) %>% 
- # filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
-  group_by(Sampler, duration, seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  mutate(reads = reads > 0) %>% 
-  pivot_wider(names_from = duration, values_from = reads) %>% 
-  select(-seq) %>% 
-  euler(shape = "ellipse", by = list(Sampler)) 
-
-#sampler_venn
-eulerr_options(quantities = list(fontsize= 8, col = "darkred", cex = 1.2, fontfamily = "sans"))
-
-plot(sampler_venn, legend = TRUE, quantities = TRUE)
-```
-
-
-```{r}
-active <- 
-Fungi_ASV_clean_long %>%
-  left_join(Fungi_tax) %>% 
-  left_join(Meta) %>% 
-  filter(Sampler != "Drone") %>% 
-  filter(duration %in% c("5 hours")) %>% 
-  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
-  group_by(Type, Sampler, seq) %>% 
-  summarise(reads = sum(reads))%>% 
-  mutate(reads = reads > 0) 
-
-passive <- 
+ref_community <-
   Fungi_ASV_clean_long %>%
-  left_join(Fungi_tax) %>% 
-  left_join(Meta) %>% 
-  filter(Sampler != "Drone") %>% 
-  filter(duration %in% c("2 weeks")) %>% 
-  group_by(Type, Sampler, seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  mutate(reads = reads > 0) 
+  left_join(Meta) %>%
+  filter(duration == "5 hours" | duration == "2 weeks") %>%
+  group_by(Sites, seq) %>%
+  summarise(present = sum(reads) > 0) %>%
+  group_by(Sites) %>%
+  summarise(S_reference = sum(present))
 
-comp_df <- active %>% mutate(comp = "") %>% dplyr::slice(0)
+completeness_df <-
+  Fungi_ASV_clean_long %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  group_by(Sites, Sampler, duration, seq) %>%
+  summarise(reads = sum(reads)) %>%
+  group_by(Sites, Sampler, duration) %>%
+  summarise(S_sampler = sum(reads > 0)) %>%
+  left_join(ref_community) %>%
+  mutate(fraction_detected = S_sampler / S_reference) %>%
+  mutate(taxon = "Fungi")
+```
 
-for(i in unique(active$Sampler)){
-  
-  comp_df <- 
-  active %>% 
-    filter(Sampler == i) %>% 
-    bind_rows(passive) %>% 
-    mutate(comp = i) %>% 
-    bind_rows(comp_df, .)
+Plot completeness by sampler and duration.
 
-  
+```{r}
+completeness_df %>%
+  ggplot(aes(x = Sampler, y = fraction_detected, fill = duration)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Sampler", y = "Fraction of reference community detected", fill = "Duration")
+```
+
+Export completeness data.
+
+```{r}
+write_tsv(completeness_df, here("Data", "derived", "Fungi_completeness.tsv"))
+```
+
+# Richness correlation across sites
+
+Compute correlation matrix of richness across sampler × duration combinations.
+
+```{r}
+Cor_mat <-
+  S_df %>%
+  left_join(flow_rate) %>%
+  mutate(Sampler_dur = paste(Sampler, duration)) %>%
+  arrange(Type, duration, desc(flow)) %>%
+  select(Sites, Sampler_dur, S) %>%
+  pivot_wider(names_from = Sampler_dur, values_from = S) %>%
+  select(-Sites) %>%
+  cor(method = "pearson", use = "pairwise.complete.obs")
+```
+
+Plot correlation matrix.
+
+```{r}
+Cor_mat %>%
+  corrplot(type = "lower", diag = FALSE, tl.col = "black", tl.cex = 0.8,
+           method = "ellipse", na.label = "square", na.label.col = "white")
+```
+
+# Richness by taxonomic subgroup
+
+Test whether sampler effects differ between Ascomycota and Basidiomycota.
+
+```{r}
+S_subgroup_df <-
+  Fungi_ASV_clean_long %>%
+  left_join(Fungi_tax) %>%
+  filter(phylum %in% c("Ascomycota", "Basidiomycota")) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  group_by(Index, phylum) %>%
+  filter(reads > 0) %>%
+  summarise(S = n()) %>%
+  left_join(Meta) %>%
+  mutate(Sampler = factor(Sampler, levels = c("Kärcher", "Coriolis", "Sass", "Hepa",
+                                               "Burkhart", "Electrostatic", "MWAC",
+                                               "WSL_Filter")))
+```
+
+Plot richness by phylum.
+
+```{r}
+S_subgroup_df %>%
+  ggplot(aes(y = S, x = duration, colour = Sites)) +
+  facet_grid(phylum ~ Sampler, scales = "free_y") +
+  geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
+  geom_point() +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+        legend.position = "bottom") +
+  labs(x = "Duration", y = "Observed richness (S)")
+```
+
+Fit GLM for each phylum separately.
+
+```{r}
+ascomycota_glm <- glm(S ~ Sampler * duration + Sites,
+                      data = filter(S_subgroup_df, phylum == "Ascomycota"),
+                      family = poisson(link = "log"))
+summary(ascomycota_glm)
+
+basidiomycota_glm <- glm(S ~ Sampler * duration + Sites,
+                         data = filter(S_subgroup_df, phylum == "Basidiomycota"),
+                         family = poisson(link = "log"))
+summary(basidiomycota_glm)
+```
+
+Analyze Agaricomycetes specifically (fruiting body fungi).
+
+```{r}
+S_agaricomycetes_df <-
+  Fungi_ASV_clean_long %>%
+  left_join(Fungi_tax) %>%
+  filter(class == "Agaricomycetes") %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  group_by(Index) %>%
+  filter(reads > 0) %>%
+  summarise(S = n()) %>%
+  left_join(Meta) %>%
+  mutate(Sampler = factor(Sampler, levels = c("Kärcher", "Coriolis", "Sass", "Hepa",
+                                               "Burkhart", "Electrostatic", "MWAC",
+                                               "WSL_Filter")))
+```
+
+Plot Agaricomycetes richness.
+
+```{r}
+S_agaricomycetes_df %>%
+  ggplot(aes(y = S, x = duration, colour = Sites)) +
+  facet_grid(~ Sampler, scales = "free_x") +
+  geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
+  geom_point() +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+        legend.position = "bottom") +
+  labs(x = "Duration", y = "Observed richness (Agaricomycetes)")
+```
+
+# Nestedness vs turnover
+
+Use betapart to decompose Sørensen dissimilarity into nestedness and turnover components. Compare sampler pairs averaged across sites.
+
+```{r}
+comm_mat <-
+  Fungi_ASV_clean %>%
+  data.frame() %>%
+  `rownames<-`(.$Index) %>%
+  select(-Index) %>%
+  as.matrix()
+
+beta_result <- betapart::beta.pair(comm_mat, index.family = "sorensen")
+```
+
+Extract pairwise nestedness and turnover matrices.
+
+```{r}
+beta_sor_mat <- as.matrix(beta_result$beta.sor)
+beta_sim_mat <- as.matrix(beta_result$beta.sim)
+beta_sne_mat <- as.matrix(beta_result$beta.sne)
+```
+
+Create metadata for sampler × duration combinations.
+
+```{r}
+sample_meta <-
+  Meta %>%
+  filter(Index %in% Fungi_ASV_clean$Index) %>%
+  filter(Sampler != "Drone") %>%
+  mutate(Sampler_dur = paste(Sampler, duration))
+```
+
+Compute mean beta diversity components across sites for each sampler pair.
+
+```{r}
+beta_df_list <- list()
+
+for(i in 1:(nrow(beta_sor_mat)-1)) {
+  for(j in (i+1):nrow(beta_sor_mat)) {
+
+    meta1 <- sample_meta[i, ]
+    meta2 <- sample_meta[j, ]
+
+    if(meta1$Sites == meta2$Sites & meta1$Sampler != meta2$Sampler) {
+      beta_df_list[[length(beta_df_list) + 1]] <- tibble(
+        Sampler1 = meta1$Sampler_dur,
+        Sampler2 = meta2$Sampler_dur,
+        Sites = meta1$Sites,
+        beta_sor = beta_sor_mat[i, j],
+        beta_sim = beta_sim_mat[i, j],
+        beta_sne = beta_sne_mat[i, j]
+      )
+    }
+  }
 }
 
-sampler_venn <- 
-comp_df %>% 
-  group_by(comp) %>% 
-  mutate(Sampler = case_when(Type == "active" ~ "active",
-                             TRUE ~ Sampler)) %>% 
-  select(-Type) %>% 
-  pivot_wider(names_from = Sampler, values_from = reads) %>% 
-  select(-seq) %>% 
-  euler(shape = "ellipse", by = list(comp)) 
+beta_df <- bind_rows(beta_df_list)
+```
 
-sampler_venn
+Compute mean across sites for each sampler pair.
 
-eulerr_options(quantities = list(fontsize= 8))
+```{r}
+beta_summary <-
+  beta_df %>%
+  group_by(Sampler1, Sampler2) %>%
+  summarise(
+    beta_sor = mean(beta_sor),
+    beta_sim = mean(beta_sim),
+    beta_sne = mean(beta_sne)
+  ) %>%
+  mutate(taxon = "Fungi")
+```
+
+Plot nestedness vs turnover.
+
+```{r}
+beta_summary %>%
+  select(Sampler1, Sampler2, beta_sim, beta_sne) %>%
+  pivot_longer(c(beta_sim, beta_sne), names_to = "component", values_to = "value") %>%
+  ggplot(aes(x = paste(Sampler1, Sampler2, sep = " vs "), y = value, fill = component)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Sampler pair", y = "Beta diversity component", fill = "Component") +
+  scale_fill_brewer(palette = "Set1", labels = c("Nestedness", "Turnover"))
+```
+
+Export betapart results.
+
+```{r}
+write_tsv(beta_summary, here("Data", "derived", "Fungi_nestedness_turnover.tsv"))
+```
+
+# Rank-abundance correlation
+
+Compute Spearman correlation on relative abundance across shared OTUs between sampler pairs.
+
+```{r}
+rel_abund_mat <-
+  Fungi_ASV_clean %>%
+  data.frame() %>%
+  `rownames<-`(.$Index) %>%
+  select(-Index) %>%
+  as.matrix()
+
+rel_abund_mat <- sweep(rel_abund_mat, 1, rowSums(rel_abund_mat), "/")
+```
+
+Compute rank-abundance correlation for each sampler pair at same site.
+
+```{r}
+rank_cor_list <- list()
+
+for(i in 1:(nrow(rel_abund_mat)-1)) {
+  for(j in (i+1):nrow(rel_abund_mat)) {
+
+    meta1 <- sample_meta[i, ]
+    meta2 <- sample_meta[j, ]
+
+    if(meta1$Sites == meta2$Sites) {
+
+      shared_otus <- (rel_abund_mat[i, ] > 0) & (rel_abund_mat[j, ] > 0)
+
+      if(sum(shared_otus) > 2) {
+        cor_test <- cor.test(rel_abund_mat[i, shared_otus],
+                            rel_abund_mat[j, shared_otus],
+                            method = "spearman")
+
+        rank_cor_list[[length(rank_cor_list) + 1]] <- tibble(
+          Sampler1 = meta1$Sampler_dur,
+          Sampler2 = meta2$Sampler_dur,
+          Sites = meta1$Sites,
+          rho = cor_test$estimate,
+          p_value = cor_test$p.value
+        )
+      }
+    }
+  }
+}
+
+rank_cor_df <- bind_rows(rank_cor_list)
+```
+
+Compute mean correlation across sites.
+
+```{r}
+rank_cor_summary <-
+  rank_cor_df %>%
+  group_by(Sampler1, Sampler2) %>%
+  summarise(
+    rho = mean(rho, na.rm = TRUE),
+    p_value = mean(p_value, na.rm = TRUE)
+  ) %>%
+  mutate(taxon = "Fungi")
+```
+
+Create correlation matrix for plotting.
+
+```{r}
+rank_cor_mat <-
+  rank_cor_summary %>%
+  select(Sampler1, Sampler2, rho) %>%
+  bind_rows(
+    rank_cor_summary %>%
+      select(Sampler1 = Sampler2, Sampler2 = Sampler1, rho)
+  ) %>%
+  pivot_wider(names_from = Sampler2, values_from = rho) %>%
+  data.frame() %>%
+  `rownames<-`(.$Sampler1) %>%
+  select(-Sampler1) %>%
+  as.matrix()
+
+diag(rank_cor_mat) <- 1
+```
+
+Plot correlation matrix.
+
+```{r}
+rank_cor_mat %>%
+  corrplot(type = "lower", diag = FALSE, tl.col = "black", tl.cex = 0.8,
+           method = "color", na.label = "square", na.label.col = "white")
+```
+
+Export rank correlation results.
+
+```{r}
+write_tsv(rank_cor_summary, here("Data", "derived", "Fungi_rank_correlation.tsv"))
+```
+
+# Venn diagram
+
+Compare detection overlap for 4 main active samplers at 5 hours.
+
+```{r}
+sampler_venn <-
+  Fungi_ASV_clean_long %>%
+  left_join(Meta) %>%
+  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>%
+  filter(duration == "5 hours") %>%
+  group_by(Sampler, seq) %>%
+  summarise(reads = sum(reads)) %>%
+  mutate(present = reads > 0) %>%
+  select(-reads) %>%
+  pivot_wider(names_from = Sampler, values_from = present) %>%
+  select(-seq) %>%
+  euler(shape = "ellipse")
+
+eulerr_options(quantities = list(fontsize = 10, col = "black"))
 
 plot(sampler_venn, legend = TRUE, quantities = TRUE)
 ```
 
+# iNEXT sensitivity analysis
+
+Use coverage-based rarefaction and extrapolation to confirm sampler ranking matches observed richness.
 
 ```{r}
-sampler_venn <- 
-Fungi_ASV_clean_long %>%
-  left_join(Fungi_tax) %>% 
-  left_join(Meta) %>% 
-  filter(Sampler != "Drone") %>% 
-  filter(duration == "5 hours") %>% 
-  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
-  group_by(Sampler, seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  mutate(reads = reads > 0) %>% 
-  pivot_wider(names_from = Sampler, values_from = reads) %>% 
-  select(-seq) %>% 
-  euler(shape = "ellipse") 
+inext_data <-
+  Fungi_ASV_clean %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  filter(duration == "5 hours" | duration == "2 weeks") %>%
+  mutate(Sampler_dur = paste(Sampler, duration)) %>%
+  select(Sampler_dur, -Index, -Sites, -Sampler, -duration) %>%
+  group_by(Sampler_dur) %>%
+  summarise(across(everything(), sum)) %>%
+  data.frame() %>%
+  `rownames<-`(.$Sampler_dur) %>%
+  select(-Sampler_dur) %>%
+  t()
 
-eulerr_options(quantities = list(fontsize= 10, col = "black"))
-
-plot(sampler_venn, legend = TRUE, quantities = TRUE)
+inext_result <- iNEXT(inext_data, q = 0, datatype = "abundance", endpoint = max(colSums(inext_data)) * 2)
 ```
 
-
-# Subgroup - Large fungi
-
-red list of swiss fungi from  https://www.doi.org/10.16904/envidat.434 (-> download Version 2). 
+Plot iNEXT rarefaction curves.
 
 ```{r}
-swiss_redlist <- 
-  read_tsv(here("Data","Fungi" ,"in_files","redlist_taxonomy.tsv")) 
+ggiNEXT(inext_result, type = 1, color.var = "Assemblage") +
+  theme_minimal() +
+  labs(title = "Coverage-based rarefaction (q=0)",
+       x = "Number of individuals",
+       y = "Species richness")
+```
+
+Extract asymptotic richness estimates.
+
+```{r}
+inext_result$AsyEst %>%
+  filter(Diversity == "Species richness") %>%
+  select(Assemblage, Observed, Estimator, s.e., LCL, UCL)
+```
+
+# Red list detection
+
+Summarize detection rates of Swiss macrofungi checklist by sampler.
+
+```{r}
+swiss_redlist <-
+  read_tsv(here("Data", "Fungi", "in_files", "redlist_taxonomy.tsv"))
 
 STATUS <- c("LC", "NT", "VU", "EN", "CR", "EW", "EX", "DD")
-Full_Name <- c("Least Concern", "Near Threatened", "Vulnerable", "Endangered", "Critically Endangered", "Extinct in the Wild", "Extinct", "Data Deficient")
+Full_Name <- c("Least Concern", "Near Threatened", "Vulnerable", "Endangered",
+               "Critically Endangered", "Extinct in the Wild", "Extinct", "Data Deficient")
 Rank <- c(1, 2, 3, 4, 5, 6, 7, 0)
 
 IUCN_Red_List_Status <- data.frame(STATUS, Full_Name, Rank)
 ```
 
-How much did we detect across all samples and sites?
-(in % of swiss macrofungi)
-
-Species 
-```{r}
-sum(unique(Fungi_tax$species) %in% swiss_redlist$accepted_name) / length(unique(swiss_redlist$accepted_name)) * 100
-```
-
-Genus
-```{r}
-sum(unique(Fungi_tax$genus) %in% swiss_redlist$genus) / length(unique(swiss_redlist$genus)) * 100
-```
-
-Family
-```{r}
-sum(unique(Fungi_tax$family) %in% swiss_redlist$family) / length(unique(swiss_redlist$family)) * 100
-```
-
-
-we match by accepted name (from GBIF) but some accepted names correspond to multiple species in the redlist with partly different threat status
-
-I keep the lower threat status for each group of synonymes (following the logic that if two species are actually one, then the lower threat level can be assumed for the species group)
-
-I ignore data deficient species in this step
+Match detected species to red list.
 
 ```{r}
-
-swiss_redlist_filt <- 
-swiss_redlist %>% 
-  select(accepted_name, SPECIES, STATUS) %>% 
-  filter(!is.na(accepted_name)) %>% 
-  left_join(IUCN_Red_List_Status) %>% 
-  group_by(accepted_name) %>% 
-  filter(Rank == min(Rank)) %>% 
-  select(-SPECIES) %>% 
-  dplyr::rename(species = accepted_name) %>% 
-  group_by(species) %>% 
+swiss_redlist_filt <-
+  swiss_redlist %>%
+  select(accepted_name, SPECIES, STATUS) %>%
+  filter(!is.na(accepted_name)) %>%
+  left_join(IUCN_Red_List_Status) %>%
+  group_by(accepted_name) %>%
+  filter(Rank == min(Rank)) %>%
+  dplyr::rename(species = accepted_name) %>%
+  group_by(species) %>%
   dplyr::slice(1)
-  
 
+Fungi_ASV_clean_long_rl <-
+  Fungi_ASV_clean_long %>%
+  left_join(Fungi_tax) %>%
+  left_join(swiss_redlist_filt)
 ```
 
-```{r}
-  Fungi_ASV_clean_long_rl <- 
-  Fungi_ASV_clean_long %>% 
-  left_join(Fungi_tax) %>% 
-  left_join(swiss_redlist_filt) 
-```
-
+Compute detection rates by sampler.
 
 ```{r}
-Fungi_ASV_clean_long_rl %>% 
-  group_by(Index) %>% 
-  mutate(reads_prct = reads/sum(reads)*100) %>% 
-  filter(Rank >= 3) %>% # c("VU", "EN", "CR", "EW", "EX")) %>% 
-  #filter(STATUS %in% c("LC")) %>% 
-  left_join(Meta) %>% 
-  filter(duration != "30 min") %>% 
-  filter(Sampler != "Drone") %>% 
-  mutate(Sampler = factor(Sampler, levels=unique(.$Sampler)[c(8,1,3,2,5,6,4,7)])) %>% 
-  mutate(reads = ifelse(reads == 0, NA, reads)) %>% 
-  mutate(reads_prct = ifelse(reads_prct == 0, NA, reads_prct)) %>% 
-  arrange(Type, Sites, duration) %>% 
- # filter(Sampler == "MWAC") %>% 
-  mutate(Sample_names = factor(Sample_names, levels = unique(.$Sample_names))) %>% #filter(is.na(reads)) %>% filter(STATUS == "CR") %>% pull(species) %>% unique()
-  ggplot(aes(y = species, x = Sampler, size = reads_prct, colour = STATUS))+
-  geom_point(alpha = 0.6)+
-  facet_grid(STATUS~Sites, scales = "free_y", space = "free")+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))+
-  scale_color_brewer(palette = "Set1")+
-  ggtitle("Species composition by site")
-```
-
-
-```{r}
-
-vul_spec <- Fungi_ASV_clean_long_rl %>% 
- filter(STATUS %in% c("VU", "EN", "CR", "EW", "EX")) %>% 
-  #filter(STATUS %in% c("LC")) %>% 
-  pull(species)
-
-Tax_vul <- 
-  Fungi_tax %>% 
-  filter(species %in% vul_spec) %>% 
-  pull(seq)
-  
-Fungi_ASV_v <- 
-Fungi_ASV %>% 
-  select("Sample", all_of(Tax_vul)) 
-  
-```
-
-```{r}
-
-rar_curve <- 
-Fungi_ASV_v %>% 
-  select(-"Sample") %>% 
-  as.matrix %>% 
-  `rownames<-`(Fungi_ASV$Sample) %>% 
-  `[`(rowSums(.) > 0,) %>% 
-  rarecurve(x = .,step = 1000, tidy = TRUE)
-
-rar_curve %>% left_join(Meta, by = c("Site" = "Index")) %>% 
-  filter(grepl("active|passive", Type)) %>% 
-  ggplot(aes(x = Sample, y = Species, group = Site, colour = duration)) +
-  geom_line()+
-  facet_wrap(~Sampler)
-
-```
-
-
-```{r}
-
-S_df_vul <- 
-Fungi_ASV_tax_long_rl %>% 
-  filter(STATUS %in% c("VU", "EN", "CR", "EW", "EX")) %>% 
- # filter(STATUS %in% c("LC")) %>% 
-  filter(Type %in% c("active", "passive")) %>% 
+redlist_detection <-
+  Fungi_ASV_clean_long_rl %>%
+  left_join(Meta) %>%
   filter(Sampler != "Drone") %>%
-  group_by(duration, Sampler, Sites) %>%
-  summarise(S = sum(reads >0)) %>% 
-  mutate(Sampler = factor(Sampler, levels= levels(S_df$Sampler))) 
+  filter(duration == "5 hours" | duration == "2 weeks") %>%
+  filter(!is.na(STATUS)) %>%
+  group_by(Sampler, species) %>%
+  summarise(detected = sum(reads) > 0) %>%
+  group_by(Sampler) %>%
+  summarise(n_species = sum(detected)) %>%
+  mutate(total_checklist = length(unique(swiss_redlist_filt$species))) %>%
+  mutate(detection_rate = n_species / total_checklist * 100)
 
-
-  
-S_df_vul %>% 
-  ggplot(aes(y = S, x = duration,  colour = Sites))+
-  facet_grid(~Sampler, scales = "free_x")+
-  geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
-  geom_point()+
-  theme_minimal()+
-  scale_color_brewer(palette = "Set1")+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom")+
-  ggtitle("rarefied richness - Vulnerable")
+redlist_detection
 ```
 
+Plot detection rates.
 
 ```{r}
-S_df_vul %>% 
-  left_join(Meta) %>% 
-  left_join(flow_rate) %>% 
-  filter(Type == "active" & Sampler != "Drone") %>% 
-  ggplot(aes(x = air_vol, y = S, colour = Sampler, shape = duration))+
- # geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
-  geom_point(position = position_jitter(width = 0.1))+
-  geom_smooth(aes(group = 1), method = "lm", se = TRUE, colour = "black", size = 0.2)+
-  #facet_grid(~duration)+
-  scale_x_log10()+
-  scale_color_brewer(palette = "Set1")+
-  theme_minimal()+
-  theme(legend.position = "bottom")+
-  labs(x = "sampled air volume (l)", title = "sampled air volume")
-  
-
+redlist_detection %>%
+  ggplot(aes(x = Sampler, y = detection_rate)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Sampler", y = "% of Swiss macrofungi checklist detected")
 ```
 
+# Export results
 
-### richness corr
+Ensure all required exports are written.
 
 ```{r}
-Cor_mat <- 
-S_df_vul %>% 
-  left_join(Meta) %>% 
-  filter(Sample_names != "1DB30_1") %>% 
-  left_join(flow_rate) %>% 
-  filter(Type %in% c("active", "passive")) %>% 
-  mutate(Sampler = paste(Sampler, duration)) %>% 
-  arrange(Type, duration, desc(flow)) %>% 
-  #filter(duration == "5 hours") %>% 
-  ungroup() %>% 
-  select(Sites, Sampler, S) %>% 
-  pivot_wider(names_from = Sampler, values_from = S) %>% 
-  select(-Sites) %>% 
-  cor(method = "pearson") 
-
-
-
-{  
-Cor_mat %>% 
-  corrplot(type = "lower",diag = F,tl.col = "black", tl.cex = 0.8, method = "ellipse",
-           na.label = "square", na.label.col = "white")
-  
-rect(xleft = 0.5, ybottom = 8.5, xright = 5.5, ytop = 13.5, density = NULL, angle = 45,
-     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
-
-rect(xleft = 6.5, ybottom = 2.5, xright = 11.5, ytop = 7.5, density = NULL, angle = 45,
-     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
-
+# Richness (already exported above)
+if(!file.exists(here("Data", "derived", "Fungi_richness.tsv"))) {
+  write_tsv(S_df, here("Data", "derived", "Fungi_richness.tsv"))
 }
-         
+
+# Contamination (already exported above)
+if(!file.exists(here("Data", "derived", "Fungi_contamination.tsv"))) {
+  write_tsv(cont_summary, here("Data", "derived", "Fungi_contamination.tsv"))
+}
+
+# Completeness (already exported above)
+if(!file.exists(here("Data", "derived", "Fungi_completeness.tsv"))) {
+  write_tsv(completeness_df, here("Data", "derived", "Fungi_completeness.tsv"))
+}
+
+# Nestedness/turnover (already exported above)
+if(!file.exists(here("Data", "derived", "Fungi_nestedness_turnover.tsv"))) {
+  write_tsv(beta_summary, here("Data", "derived", "Fungi_nestedness_turnover.tsv"))
+}
+
+# Rank correlation (already exported above)
+if(!file.exists(here("Data", "derived", "Fungi_rank_correlation.tsv"))) {
+  write_tsv(rank_cor_summary, here("Data", "derived", "Fungi_rank_correlation.tsv"))
+}
 ```
-## Species comp
+
+# Session info
+
+Record R session information for reproducibility.
 
 ```{r}
-
-#1DB30_1 = NGS_UDP0094
-
-ASV_sample_vu <- 
-Fungi_ASV_v %>% 
-  filter(Sample != Meta[Meta$Sample_names == "1DB30_1",]$Index) %>% 
-  filter(Sample %in% {filter(Meta, Type %in% c("active", "passive")) %>% pull(Index)}) %>% 
-  filter(rowSums(.[,-1])>0) %>% 
-  select(where(function(x){is.character(x) || sum(x) > 1}))
-
-ASV_dist_vu <- vegdist(ASV_sample_vu[,-1], method = "bray", binary = T)
-ASV_dist_vu <- raupcrick(ASV_sample_vu[,-1])
-
-NMDS_vu <- metaMDS(ASV_dist_vu) 
-
-NMDS_vu$points %>% 
-  as_tibble() %>% 
-  mutate(Index = ASV_sample_vu$Sample) %>% 
-  left_join(Meta) %>% 
-#  filter(MDS1 < 100) %>% 
-  ggplot(aes(x = MDS1, y = MDS2, colour = Sites))+
-  geom_point()+
-  facet_wrap(~duration)
-  
+sessionInfo()
 ```
-
-### similarity ranking
-
-```{r}
-ASV_dist_M <- as.matrix(ASV_dist_vu)
-
-dimnames(ASV_dist_M) <- 
-  list(ASV_sample_vu$Sample, ASV_sample_vu$Sample) 
-
-diag(ASV_dist_M) <- NA
-
-Meta_comb1 <- 
-  Meta %>% 
-  mutate(comb1 = paste(Sampler, duration, Sites)) %>% 
-  select(Index, comb1)
-
-Meta_comb2 <- 
-  Meta %>% 
-  mutate(comb2 = paste(Sampler, duration, Sites)) %>% 
-  select(Index, comb2) %>% 
-  dplyr::rename(Index2 = Index)
-
-ASV_dist_df <-   
-ASV_dist_M %>% 
-  data.frame() %>% 
-  tibble::rownames_to_column(var = "Index") %>% 
-  pivot_longer(-Index, names_to = "Index2") %>% 
-  filter(!is.na(value)) %>% 
-  left_join(Meta_comb1) %>% 
-  left_join(Meta_comb2) 
-
-ASV_dist_cor <- 
-ASV_dist_df %>% 
-  filter(!grepl("Drone", comb1) & !grepl("Drone", comb2)) %>%
-  mutate(site_comb = paste(gsub(".+\\s(\\w+)$", "\\1", comb1),
-                           gsub(".+\\s(\\w+)$", "\\1", comb2),
-                           sep = "_")) %>% 
-  mutate(Sampler1 = gsub("(.+)\\s\\w+$", "\\1", comb1),
-         Sampler2 = gsub("(.+)\\s\\w+$", "\\1", comb2)) %>% 
-  filter(Sampler1 == Sampler2) %>% 
-  select(value, site_comb, Sampler1) %>% 
-#  group_by(site_comb, Sampler1) %>% 
-#  filter(n() > 1)
-  pivot_wider(names_from = Sampler1, values_from = value) %>% 
-  select(-site_comb) %>% 
-  distinct() %>% 
-  select(rownames(Cor_mat)) %>% 
-  cor(method = "pearson") %>% 
-  #cor(method = "kendall") %>% 
-  {.}
-                              
-ASV_dist_cor %>% 
-  corrplot(type = "lower",diag = F,tl.col = "black", tl.cex = 0.8, method = "ellipse",
-           na.label = "square", na.label.col = "lightgrey")
-
-```
-
-## Venn diagramm
-```{r}
-sampler_venn <- 
-Fungi_ASV_tax_long_rl %>% 
-  filter(Type %in% c("active")) %>% 
-  filter(Sampler != "Drone") %>% 
-  filter(STATUS %in% c("VU", "EN", "CR", "EW", "EX")) %>% 
- # filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
-  group_by(Sampler, duration, seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  mutate(reads = reads > 0) %>% 
-  pivot_wider(names_from = duration, values_from = reads) %>% 
-  select(-seq) %>% 
-  euler(shape = "ellipse", by = list(Sampler)) 
-
-sampler_venn
-
-plot(sampler_venn, legend = TRUE, quantities = FALSE)
-```
-
-```{r}
-sampler_venn <- 
-Fungi_ASV_tax_long_rl %>% 
-  filter(is.na(STATUS)) %>% 
-#  filter(Type %in% c("passive")) %>% 
-  filter(Sampler != "Drone") %>% 
-#  filter(STATUS %in% c("VU", "EN", "CR", "EW", "EX")) %>% 
-  filter(Sampler %in% c("Kärcher", "MWAC", "WSL_Filter")) %>% 
-  group_by(Sampler, seq) %>% 
-  summarise(reads = sum(reads)) %>% 
-  mutate(reads = reads > 0) %>% 
-  pivot_wider(names_from = Sampler, values_from = reads) %>% 
-  select(-seq) %>% 
-  euler(shape = "circle") 
-
-plot(sampler_venn, legend = TRUE, quantities = TRUE)
-```
-
-
-#Aquatic fungi
-
-```{r}
-Fungi_tax %>% filter(phylum %in% c("Blastocladiomycota", "Chytridiomycota", "Neocallimastigomycota"))
-
-Plant_pathogen <- read_csv(here("Data", "Fungus-Host-Data_20211105.csv"))
-
-Plant_pathogen_gbif <- 
-gsub("(\\w+)\\s.+", "\\1", unique(Plant_pathogen$sciName)) %>% unique() %>% 
-  rgbif::name_backbone_checklist(rank = "genus", kingdom = "Fungi")
-
-Plant_pathogen_gbif_detected <- 
-  filter(Plant_pathogen_gbif, genus %in% Fungi_tax$genus) %>% 
-  select(verbatim_name, kingdom, phylum, class, order, family, genus)
-
-Plant_pathogen %>% 
-  mutate(verbatim_name = gsub("(\\w+)\\s.+", "\\1", sciName)) %>% 
-  right_join(Plant_pathogen_gbif_detected) %>% 
-  select(sciName) %>% 
-  unique()
-
-Fungi_tax %>% 
-  filter(species %in% Plant_pathogen$sciName) %>% 
-  left_join(distinct(select(Plant_pathogen, sciName, host)), by = join_by(species == sciName)) %>% 
-  filter(grepl("Castanea", host))
-```
-
