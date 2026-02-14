@@ -1,0 +1,1913 @@
+---
+title: "R Notebook"
+output: tax_glom_level
+---
+```{r}
+library(dplyr)
+library(Biostrings)
+library(here)
+library(readr)
+library(tidyr)
+library(purrr)
+library(data.table)
+library(rgbif)
+library(job)
+library(eulerr)
+```
+#Functions
+
+define function to check against gbif backbone in chunks
+```{r}
+# Function to split the dataframe into chunks
+split_dataframe <- function(df, chunk_size) {
+  split(df, ceiling(seq_along(1:nrow(df)) / chunk_size))
+}
+
+# Combined function to process each chunk with retries
+process_chunk_with_retry <- function(chunk, max_retries = 5, wait_seconds = 10) {
+  attempt <- 1
+  success <- FALSE
+  result <- NULL
+  
+  while (attempt <= max_retries && !success) {
+    tryCatch({
+      # Attempt to process the chunk
+      result <- name_backbone_checklist(name_data = chunk)
+      success <- TRUE  # If successful, set success to TRUE
+    }, error = function(e) {
+      message("Error processing chunk on attempt ", attempt, ": ", e$message)
+      attempt <- attempt + 1  # Increment the attempt counter
+      if (attempt > max_retries) {
+        stop("Failed to process chunk after ", max_retries, " attempts.")
+      }
+      Sys.sleep(wait_seconds)  # Wait before retrying
+    })
+  }
+  
+  return(result)
+}
+
+# Main function to process dataframe in chunks and re-merge
+process_dataframe_in_chunks <- function(df, chunk_size, save_path) {
+  chunks <- split_dataframe(df, chunk_size)
+  total_chunks <- length(chunks)
+  chunk_numbers <- seq_along(chunks)
+  
+  results <- map2(chunks, chunk_numbers, function(chunk, chunk_number) {
+    save_file <- file.path(save_path, paste0("chunk_", chunk_number, ".rds"))
+    
+    # Check if the chunk has already been processed
+    if (file.exists(save_file)) {
+      message("Chunk ", chunk_number, " already processed. Loading from file.")
+      return(readRDS(save_file))
+    } else {
+      message("Processing chunk ", chunk_number, " of ", total_chunks)
+      
+      # Process the chunk with retries
+      result <- process_chunk_with_retry(chunk)
+      
+      # Adjust verbatim_index if needed
+      result$verbatim_index <- (chunk_number - 1) * chunk_size + result$verbatim_index
+      
+      # Save the result
+      saveRDS(result, save_file)
+      return(result)
+    }
+  })
+  
+  combined_results <- bind_rows(results)
+  return(combined_results)
+}
+```
+
+
+#rdp
+
+```{r}
+rdp <- readDNAStringSet(here("Data", "trainset19_072023.rdp", "trainset19_072023.rdp.fasta"))
+
+tax_rdp <- read_table(here("Data", "trainset19_072023.rdp", "trainset19_072023.rdp.tax"), col_names = F)
+colnames(tax_rdp) <- c("ID", "tax")
+
+tax_rdp <- 
+tax_rdp %>% 
+  tidyr::separate_wider_delim(tax, delim = ";", 
+                              names = c("d", "p", "c", "o", "f", "g"), 
+                              too_many = "drop", 
+                              too_few = "align_start")
+
+#structure
+"KU904771.1;tax=p:Chlorophyta,c:Ulvophyceae,o:Cladophorales,f:Cladophoraceae,g:Basicladia,s:unknown Basicladia"
+
+tax_rdp_sintax <- 
+tax_rdp %>%
+  pivot_longer(-ID) %>% 
+  mutate(rank = paste(name, value, sep = ":")) %>% 
+  group_by(ID) %>% 
+  summarise(rank = paste0(rank, collapse = ",")) %>% 
+  mutate(Sintax = paste(ID, ";tax=", rank, sep = ""))
+
+seq_order <- gsub("(.+?)\\s.+", "\\1", names(rdp))
+
+names(rdp) <- tax_rdp_sintax[match(seq_order, tax_rdp_sintax$ID),]$Sintax
+
+writeXStringSet(rdp, here("Data", "trainset19_072023.rdp", "trainset19_072023.rdp_sintax.fasta"))
+```
+
+
+#Unite
+```{r}
+refDB <- readDNAStringSet(here("Data", primer, "in_files", "sh_general_release_dynamic_s_all_29.11.2022.fasta"))
+
+names_refDB <- names(refDB)
+
+names_refDB_sintax <- 
+strsplit(names_refDB, "\\|") %>% 
+  lapply(function(x) paste(x[2], x[5], sep = ";tax=")) %>% 
+  unlist() %>% 
+  gsub("__", ":", .)
+
+names_refDB_sintax <- 
+names_refDB_sintax %>% 
+  gsub(";", ",", .) %>% 
+  gsub(",tax", ";tax",. )
+
+
+names(refDB) <- names_refDB_sintax
+
+refDB %>% 
+writeXStringSet(here("Data", primer, "in_files", "sh_general_release_dynamic_s_all_29.11.2022.sintax.fasta"))
+```
+
+
+##get taxonomy
+```{r}
+Unite <- readDNAStringSet(here("Data", "Fungi", "in_files", "sh_general_release_dynamic_s_all_29.11.2022.sintax.fasta"))
+
+Unite_tax <- 
+  tibble(seqname = names(Unite)) %>% 
+  mutate(
+    tax = str_extract(seqname, "tax=.*"),
+    tax = str_remove(tax, "^tax="),
+    tax = str_remove(tax, "[;,]?$")
+  ) %>% 
+  mutate(tax = strsplit(tax, ",")) %>% 
+  unnest(tax) %>% 
+  group_by(seqname) %>% 
+  mutate(taxonomy_name = gsub("^\\w:(.+?);*$", "\\1", tax),
+         taxonomy_level = gsub("(^\\w):.+", "\\1", tax)) %>% 
+  left_join(tax_match_df)
+
+Unite_tax_w <- 
+Unite_tax %>% 
+  select(seqname, taxonomy_name, taxon) %>% 
+  pivot_wider(names_from = taxon, values_from = taxonomy_name)
+
+
+write_tsv(Unite_tax_w, here("Data", "Fungi", "in_files", "Unite_taxonomy.txt"))
+Unite_tax_w <- read_tsv(here("Data", "Fungi", "in_files", "Unite_taxonomy.txt"))
+```
+
+## rgbif
+```{r}
+Unite_gbif_in <- 
+  Unite_tax_w %>% 
+  ungroup %>% 
+  select(-seqname) %>% 
+  distinct() %>% 
+  mutate(name = species) %>% 
+  mutate(name = gsub("_", " ", name))
+
+# Define the chunk size
+chunk_size <- 2000
+
+# Define the path to save intermediate results
+save_path <- here("Data", "Fungi", "in_files")
+
+Unite_gbif_out <- process_dataframe_in_chunks(Unite_gbif_in, chunk_size, save_path)
+
+#check if everything has been processed
+Unite_gbif_in %>% 
+  ungroup() %>% 
+  mutate(index = 1:n()) %>% 
+  filter(!index %in% Unite_gbif_out$verbatim_index) %>% 
+  nrow()
+
+# Delete chunk files
+chunk_files <- list.files(save_path, pattern = "\\.rds$", full.names = TRUE)
+file.remove(chunk_files)
+
+write_tsv(Unite_gbif_out, here("Data", "Fungi", "in_files", "Unite_gbif_out.txt"))
+
+Unite_gbif_out <- read_tsv(here("Data", "Fungi", "in_files", "Unite_gbif_out.txt"))
+```
+
+###Merge gbif taxonomy to Unite taxonomy
+```{r}
+
+Unite_tax_newname <- 
+Unite_gbif_out %>% 
+  select(starts_with("verbatim"), kingdom, phylum, class, order, family, genus, species) %>% 
+  dplyr::rename_with( ~paste("gbif",., sep = "_"), .cols = !starts_with("verbatim")) %>% 
+  dplyr::rename_with( ~gsub("verbatim_", "",.), .cols = starts_with("verbatim")) %>% 
+  dplyr::rename(species = name) %>% 
+  mutate(species = gsub(" ", "_", species)) %>% 
+  select(-index) %>% 
+  distinct() %>% 
+  left_join(Unite_tax_w,.) 
+
+```
+
+###make Sintax compatible sequence names
+```{r}
+
+Unite_tax_newseqname <- 
+Unite_tax_newname %>%
+  ungroup() %>% 
+  select(seqname, starts_with("gbif")) %>% 
+  mutate(ID_short = gsub("^(.+?);.+", "\\1", seqname)) %>% 
+  pivot_longer(!one_of(c("seqname", "ID_short")), names_to = "taxlev", values_to = "tax") %>% 
+  mutate(taxlev = gsub("gbif_(\\w).+", "\\1", taxlev)) %>% 
+  mutate(taxp = paste(taxlev, tax, sep = ":")) %>% 
+  filter(!is.na(tax)) %>% 
+  select(seqname, ID_short, taxp) %>% 
+  group_by(seqname, ID_short) %>% 
+  summarise(taxs = paste(taxp, collapse = ",")) %>% 
+  ungroup() %>% 
+  mutate(newSeqname = paste(ID_short, ";tax=",taxs,";", sep = ""))
+
+write_tsv(Unite_tax_newseqname, here("Data", "Fungi", "in_files", "Unite_tax_newseqname.txt"))
+Unite_tax_newseqname <- read_tsv(here("Data", "Fungi", "in_files", "Unite_tax_newseqname.txt"))
+```
+
+###rename sequences
+```{r}
+Unite_gbif <- Unite
+
+#reorder sequences to match dataframe
+Unite_gbif <- Unite_gbif[match(Unite_tax_newseqname$seqname, names(Unite_gbif))]
+
+#rename seqeunces
+names(Unite_gbif) <- Unite_tax_newseqname$newSeqname
+
+#export
+Unite_gbif <- readDNAStringSet(here("Data", "Fungi", "in_files", "Unite_db_sintax_gbif.fa"))
+
+#make version with only sequences with at least genus assignment
+Unite_gbif[grepl("g:", names(Unite_gbif))] %>% 
+  writeXStringSet(., here("Data", "Fungi", "in_files", "Unite_db_sintax_gbif_genus.fa"))
+```
+
+```{r}
+Unite_sename_tax <- 
+Unite_tax_newseqname %>% 
+  ungroup() %>% 
+  select(seqname, newSeqname) %>%
+  left_join(select(Unite_tax_newname, seqname, starts_with("gbif"))) %>% 
+  rename_all(~gsub("gbif_", "", .x))
+
+write_tsv(Unite_sename_tax, here("Data", "Fungi", "in_files", "Unite_gbif_tax.txt"))
+Unite_seqname_tax <- read_tsv(here("Data", "Fungi", "in_files", "Unite_gbif_tax.txt"))
+
+Unite_seqname_tax %>%
+  filter(kingdom == "Plantae") %>% 
+  group_by(genus, species) %>% summarise(n = n())
+  pull(species) %>% unique %>% length
+```
+
+
+#ITS Plants Quaresma et al 
+
+https://www.nature.com/articles/s41597-024-02962-5
+
+```{r}
+its_global <- readDNAStringSet(here("Data", "Plants", "in_files", "Plant_ITS_db",  "its2.global.2023-01-17.curated.tax.mc.add.fa"))
+```
+
+## extract taxonomy
+
+get taxonomy dataframe for all seqeunces in ITS refDB
+```{r}
+
+its_global_tax <- tibble(seqname = names(its_global)) %>% 
+  mutate(
+    TaxonomyString = str_extract(seqname, "tax=.*"),
+    TaxonomyString = str_remove(TaxonomyString, "^tax="),
+    TaxonomyString = str_remove(TaxonomyString, "[;,]?$")
+  )
+
+# Split the taxonomy string into key-value pairs
+its_global_tax <- its_global_tax %>%
+  mutate(
+    TaxaPairs = str_split(TaxonomyString, ",")
+  )
+
+# Function to process key-value pairs
+process_taxa_pairs <- function(taxa_pairs) {
+  # Split each key-value pair by colon
+  pairs_list <- str_split(taxa_pairs, ":")
+  
+  # Create a named vector
+  taxa_list <- sapply(pairs_list, function(x) {
+    key <- x[1]
+    value <- ifelse(length(x) > 1, x[2], NA)
+    names(value) <- key
+    return(value)
+  })
+  
+  return(taxa_list)
+}
+
+# Apply the function to each row and expand the taxonomy
+its_global_tax <- its_global_tax %>%
+  mutate(
+    TaxaList = lapply(TaxaPairs, process_taxa_pairs)
+  ) %>%
+  unnest_wider(TaxaList)
+
+its_global_tax <- 
+  its_global_tax %>% 
+  select(seqname, k,p,c,o,f,g,s) %>% 
+  pivot_longer(-seqname, names_to = "taxonomy_level", values_to = "taxa") %>% 
+  left_join(tax_match_df) %>% 
+  select(-taxonomy_level) %>% 
+  pivot_wider(names_from = taxon, values_from = taxa)
+
+#export taxonomy table
+write_tsv(its_global_tax,here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_tax.txt"))
+```
+
+
+
+## rgbif
+```{r}
+
+its_global_gbif_in <- 
+  its_global_tax %>% 
+  select(-seqname) %>% 
+  distinct() %>% 
+  mutate(name = gsub("_", " ", species))
+
+# Define the chunk size
+chunk_size <- 2000
+
+# Define the path to save intermediate results
+save_path <- here("Data", "Plants", "in_files", "Plant_ITS_db")
+
+its_global_gbif_out <- process_dataframe_in_chunks(its_global_gbif_in, chunk_size, save_path)
+
+retry_df <- 
+its_global_gbif_in %>% 
+  ungroup() %>% 
+  mutate(index = 1:n()) %>% 
+  filter(!index %in% its_global_gbif_out$verbatim_index)
+
+retry_out <- process_dataframe_in_chunks(retry_df, chunk_size, save_path)
+
+its_global_gbif_out <- bind_rows(its_global_gbif_out, retry_out)
+
+write_tsv(its_global_gbif_out,here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_gbif.txt"))
+
+# Delete chunk files
+chunk_files <- list.files(save_path, pattern = "\\.rds$", full.names = TRUE)
+file.remove(chunk_files)
+
+
+
+```
+
+Merge gbif taxonomy to its_global_tax taxonomy
+```{r}
+
+its_global_gbif_out <- read_tsv(here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_gbif.txt"))
+
+its_global_newname <- 
+  its_global_gbif_in %>%
+  rename_with(~ paste("verbatim", ., sep = "_"), everything()) %>% 
+  left_join(its_global_gbif_out) %>% 
+  select(starts_with("verbatim"), kingdom, phylum, class, order, family, genus, species) %>% 
+  dplyr::rename_with( ~paste("gbif",., sep = "_"), .cols = !starts_with("verbatim")) %>% 
+  select(-verbatim_name, -verbatim_index) %>% 
+  dplyr::rename_with( ~gsub("verbatim_(\\w+)", "\\1",.), .cols = starts_with("verbatim")) %>% 
+  distinct() %>% 
+  left_join(its_global_tax,.) %>% 
+  mutate(ID = gsub("(.+?);tax=.+", "\\1", seqname))
+
+#check that ID's are unique
+length(its_global_newname$ID) == unique(length(its_global_newname$ID))
+```
+
+replace Plant ITS taxonomy
+
+example name
+```{r}
+names(its_global)[1]
+```
+
+
+```{r}
+
+its_global_newseqname <- 
+its_global_newname %>% 
+  select(seqname, ID, starts_with("gbif")) %>% 
+  mutate(gbif_species = gsub(" ", "_", gbif_species)) %>% #no spaces in sequence names for vsearch
+  pivot_longer(!one_of("ID", "seqname"), names_to = "taxlev", values_to = "tax") %>% 
+  mutate(taxlev = gsub("gbif_(\\w).+", "\\1", taxlev)) %>% 
+  mutate(taxp = paste(taxlev, tax, sep = ":")) %>% 
+  select(seqname, ID, taxp) %>% 
+  group_by(seqname, ID) %>% 
+  summarise(taxs = paste(taxp, collapse = ",")) %>% 
+  mutate(newSeqname = paste(ID, ";tax=",taxs,";", sep = ""))
+
+its_global_gbif <- its_global
+
+#reorder sequences to match dataframe
+its_global_gbif <- its_global_gbif[match(its_global_newseqname$ID, gsub("(.+?);.+", "\\1", names(its_global_gbif)))]
+
+#rename seqeunces
+names(its_global_gbif) <- its_global_newseqname$newSeqname
+
+#export
+writeXStringSet(its_global_gbif, here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_gbif.fa"))
+
+#version with only sequences with species level assignment
+its_global_gbif_species <- its_global_gbif[!grepl(",s:NA", names(its_global_gbif))]
+
+#export
+writeXStringSet(its_global_gbif_species, here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_gbif_sp.fa"))
+```
+
+export seqname tax df
+```{r}
+its_global_seqname_tax <- 
+its_global_newseqname %>% 
+  ungroup() %>% 
+  select(ID, newSeqname) %>% 
+  left_join(select(its_global_newname, ID, starts_with("gbif"))) %>% 
+  rename_all(~gsub("gbif_", "", .x)) %>% 
+  select(-ID)
+
+write_tsv(its_global_seqname_tax, here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_gbif_tax.txt"))
+
+its_global_seqname_tax <- read_tsv(here("Data", "Plants", "in_files", "Plant_ITS_db", "its_global_gbif_tax.txt"))
+
+
+its_global_seqname_tax %>% 
+  group_by(genus, species) %>% 
+  summarise(n = n())
+```
+
+#Midori COI
+
+1.Leray M, Knowlton N, Machida RJ. In press. MIDORI2: A collection of quality controlled, preformatted, and regularly updated reference databases for taxonomic assignment of eukaryotic mitochondrial sequences. Environmental DNA n/a. (doi:10.1002/edn3.303)
+
+https://www.reference-midori.info/download/Databases/GenBank261_2024-06-15/SINTAX/uniq/MIDORI2_UNIQ_NUC_GB261_CO1_SINTAX.fasta.gz
+
+```{r}
+Midori <- readDNAStringSet(here("Data", "Insects", "in_files",  "MIDORI2_UNIQ_NUC_GB261_CO1_SINTAX.fasta"))
+```
+
+## extract taxonomy
+
+get taxonomy dataframe for all seqeunces in refDB
+```{r}
+
+Midori_tax <-
+  tibble(seqname = names(Midori)) %>%
+#ä  dplyr::slice(1:10) %>% 
+  mutate(
+    TaxonomyString = str_extract(seqname, "tax=.*"),
+    TaxonomyString = str_remove(TaxonomyString, "^tax="),
+    TaxonomyString = str_remove(TaxonomyString, "[;,]?$")
+  ) %>% 
+  mutate(TaxonomyString = gsub("_\\d+", "", TaxonomyString))
+
+# Split the taxonomy string into key-value pairs
+Midori_tax <- Midori_tax %>%
+  mutate(
+    TaxaPairs = str_split(TaxonomyString, ",")
+  )
+
+# Function to process key-value pairs
+process_taxa_pairs <- function(taxa_pairs) {
+  # Split each key-value pair by colon
+  pairs_list <- str_split(taxa_pairs, ":")
+  
+  # Create a named vector
+  taxa_list <- sapply(pairs_list, function(x) {
+    key <- x[1]
+    value <- ifelse(length(x) > 1, x[2], NA)
+    names(value) <- key
+    return(value)
+  })
+  
+  return(taxa_list)
+}
+
+# Apply the function to each row and expand the taxonomy
+Midori_tax <- Midori_tax %>%
+  mutate(
+    TaxaList = lapply(TaxaPairs, process_taxa_pairs)
+  ) %>%
+  unnest_wider(TaxaList)
+
+Midori_tax <- 
+  Midori_tax %>% 
+  select(seqname, k,p,c,o,f,g,s) %>% 
+  pivot_longer(-seqname, names_to = "taxonomy_level", values_to = "taxa") %>% 
+  left_join(tax_match_df) %>% 
+  select(-taxonomy_level) %>% 
+  pivot_wider(names_from = taxon, values_from = taxa)
+
+#export taxonomy table
+write_tsv(Midori_tax,here("Data", "Plants", "in_files", "Plant_ITS_db", "Midori_tax.txt"))
+```
+
+
+
+## rgbif
+```{r}
+
+Midori_gbif_in <- 
+  Midori_tax %>% 
+  select(-seqname) %>% 
+  distinct() %>% 
+  mutate(name = gsub("_", " ", species))
+
+# Define the chunk size
+chunk_size <- 2000
+
+# Define the path to save intermediate results
+save_path <- here("Data", "Insects", "in_files")
+
+Midori_gbif_out <- process_dataframe_in_chunks(Midori_gbif_in, chunk_size, save_path)
+
+retry_df <- 
+Midori_gbif_in %>% 
+  ungroup() %>% 
+  mutate(index = 1:n()) %>% 
+  filter(!index %in% Midori_gbif_out$verbatim_index)
+
+retry_out <- process_dataframe_in_chunks(retry_df, chunk_size, save_path)
+
+Midori_gbif_out <- bind_rows(Midori_gbif_out, retry_out)
+
+write_tsv(Midori_gbif_out,here("Data", "Insects", "in_files", "Midori_gbif.txt"))
+
+# Delete chunk files
+chunk_files <- list.files(save_path, pattern = "\\.rds$", full.names = TRUE)
+file.remove(chunk_files)
+
+
+
+```
+
+Merge gbif taxonomy to Midori_tax taxonomy
+```{r}
+
+Midori_gbif_out <- read_tsv(here("Data", "Insects", "in_files", "Midori_gbif.txt"))
+
+Midori_newname <- 
+  Midori_gbif_in %>%
+  rename_with(~ paste("verbatim", ., sep = "_"), everything()) %>% 
+  left_join(Midori_gbif_out) %>% 
+  select(starts_with("verbatim"), kingdom, phylum, class, order, family, genus, species) %>% 
+  dplyr::rename_with( ~paste("gbif",., sep = "_"), .cols = !starts_with("verbatim")) %>% 
+  select(-verbatim_name, -verbatim_index) %>% 
+  dplyr::rename_with( ~gsub("verbatim_(\\w+)", "\\1",.), .cols = starts_with("verbatim")) %>% 
+  distinct() %>% 
+  left_join(Midori_tax,.) %>% 
+  mutate(ID = gsub("(.+?);tax=.+", "\\1", seqname))
+
+#check that ID's are unique
+length(Midori_newname$ID) == unique(length(Midori_newname$ID))
+```
+
+replace Midori taxonomy
+
+example name
+```{r}
+names(Midori)[1]
+```
+
+
+```{r}
+
+Midori_newseqname <- 
+Midori_newname %>% 
+  select(seqname, ID, starts_with("gbif")) %>% 
+  mutate(gbif_species = gsub(" ", "_", gbif_species)) %>% #no spaces in sequence names for vsearch
+  pivot_longer(!one_of("ID", "seqname"), names_to = "taxlev", values_to = "tax") %>% 
+  mutate(taxlev = gsub("gbif_(\\w).+", "\\1", taxlev)) %>% 
+  mutate(taxp = paste(taxlev, tax, sep = ":")) %>% 
+  select(seqname, ID, taxp) %>% 
+  group_by(seqname, ID) %>% 
+  summarise(taxs = paste(taxp, collapse = ",")) %>% 
+  mutate(newSeqname = paste(ID, ";tax=",taxs,";", sep = ""))
+
+Midori_gbif <- Midori
+
+#reorder sequences to match dataframe
+Midori_gbif <- Midori_gbif[match(Midori_newseqname$ID, gsub("(.+?);.+", "\\1", names(Midori_gbif)))]
+
+#rename seqeunces
+names(Midori_gbif) <- Midori_newseqname$newSeqname
+
+#export
+writeXStringSet(Midori_gbif, here("Data", "Plants", "in_files", "Plant_ITS_db", "Midori_gbif.fa"))
+
+#version with only sequences at least genus level assignment
+Midori_gbif_species <- Midori_gbif[!grepl(",g:NA", names(Midori_gbif))]
+
+#export
+writeXStringSet(Midori_gbif_species, here("Data", "Insects", "in_files", "Midori_gbif_sp.fa"))
+```
+
+export seqname tax df
+```{r}
+Midori_seqname_tax <- 
+Midori_newseqname %>% 
+  ungroup() %>% 
+  select(ID, newSeqname) %>% 
+  left_join(select(Midori_newname, ID, starts_with("gbif"))) %>% 
+  rename_all(~gsub("gbif_", "", .x)) %>% 
+  select(-ID)
+
+write_tsv(Midori_seqname_tax, here("Data", "Insects", "in_files", "Midori_gbif_tax.txt"))
+Midori_seqname_tax <- read_tsv(here("Data", "Insects", "in_files", "Midori_gbif_tax.txt"))
+
+Midori_seqname_tax %>% filter(phylum == "Chordata") %>% group_by(genus, species) %>% summarise(n = n())
+```
+
+
+#Midori 16S
+
+1.Leray M, Knowlton N, Machida RJ. In press. MIDORI2: A collection of quality controlled, preformatted, and regularly updated reference databases for taxonomic assignment of eukaryotic mitochondrial sequences. Environmental DNA n/a. (doi:10.1002/edn3.303)
+
+https://www.reference-midori.info/download/Databases/GenBank261_2024-06-15/SINTAX/uniq/MIDORI2_UNIQ_NUC_GB261_lrRNA_SINTAX.fasta.gz
+
+```{r}
+Midori_lr <- readDNAStringSet(here("Data", "Vertebrates", "in_files",  "MIDORI2_UNIQ_NUC_GB261_lrRNA_SINTAX.fasta"))
+```
+
+## extract taxonomy
+
+get taxonomy dataframe for all seqeunces in refDB
+```{r}
+
+Midori_lr_tax <-
+  tibble(seqname = names(Midori_lr)) %>%
+ #dplyr::slice(1:10) %>% 
+  mutate(
+    TaxonomyString = str_extract(seqname, "tax=.*"),
+    TaxonomyString = str_remove(TaxonomyString, "^tax="),
+    TaxonomyString = str_remove(TaxonomyString, "[;,]?$")
+  ) %>% 
+  mutate(TaxonomyString = gsub("_\\d+", "", TaxonomyString))
+
+# Split the taxonomy string into key-value pairs
+Midori_lr_tax <- Midori_lr_tax %>%
+  mutate(
+    TaxaPairs = str_split(TaxonomyString, ",")
+  )
+
+# Function to process key-value pairs
+process_taxa_pairs <- function(taxa_pairs) {
+  # Split each key-value pair by colon
+  pairs_list <- str_split(taxa_pairs, ":")
+  
+  # Create a named vector
+  taxa_list <- sapply(pairs_list, function(x) {
+    key <- x[1]
+    value <- ifelse(length(x) > 1, x[2], NA)
+    names(value) <- key
+    return(value)
+  })
+  
+  return(taxa_list)
+}
+
+# Apply the function to each row and expand the taxonomy
+Midori_lr_tax <- Midori_lr_tax %>%
+  mutate(
+    TaxaList = lapply(TaxaPairs, process_taxa_pairs)
+  ) %>%
+  unnest_wider(TaxaList)
+
+Midori_lr_tax <- 
+  Midori_lr_tax %>% 
+  select(seqname, k,p,c,o,f,g,s) %>% 
+  pivot_longer(-seqname, names_to = "taxonomy_level", values_to = "taxa") %>% 
+  left_join(tax_match_df) %>% 
+  select(-taxonomy_level) %>% 
+  pivot_wider(names_from = taxon, values_from = taxa)
+
+#export taxonomy table
+write_tsv(Midori_lr_tax,here("Data", "Vertebrates", "in_files", "Midori_lr_tax.txt"))
+```
+
+
+
+## rgbif
+```{r}
+
+Midori_lr_gbif_in <- 
+  Midori_lr_tax %>% 
+  select(-seqname) %>% 
+  distinct() %>% 
+  mutate(name = gsub("_", " ", species))
+
+# Define the chunk size
+chunk_size <- 2000
+
+# Define the path to save intermediate results
+save_path <- here("Data", "Vertebrates", "in_files")
+
+Midori_lr_gbif_out <- process_dataframe_in_chunks(Midori_lr_gbif_in, chunk_size, save_path)
+
+retry_df <- 
+Midori_lr_gbif_in %>% 
+  ungroup() %>% 
+  mutate(index = 1:n()) %>% 
+  filter(!index %in% Midori_lr_gbif_out$verbatim_index)
+
+retry_out <- process_dataframe_in_chunks(retry_df, chunk_size, save_path)
+
+Midori_lr_gbif_out <- bind_rows(Midori_lr_gbif_out, retry_out)
+
+write_tsv(Midori_lr_gbif_out,here("Data", "Vertebrates", "in_files", "Midori_lr_gbif.txt"))
+
+# Delete chunk files
+chunk_files <- list.files(save_path, pattern = "\\.rds$", full.names = TRUE)
+file.remove(chunk_files)
+
+
+
+```
+
+Merge gbif taxonomy to Midori_lr_tax taxonomy
+```{r}
+
+Midori_lr_gbif_out <- read_tsv(here("Data", "Vertebrates", "in_files", "Midori_lr_gbif.txt"))
+
+Midori_lr_newname <- 
+  Midori_lr_gbif_in %>%
+  rename_with(~ paste("verbatim", ., sep = "_"), everything()) %>% 
+  left_join(Midori_lr_gbif_out) %>% 
+  select(starts_with("verbatim"), kingdom, phylum, class, order, family, genus, species) %>% 
+  dplyr::rename_with( ~paste("gbif",., sep = "_"), .cols = !starts_with("verbatim")) %>% 
+  select(-verbatim_name, -verbatim_index) %>% 
+  dplyr::rename_with( ~gsub("verbatim_(\\w+)", "\\1",.), .cols = starts_with("verbatim")) %>% 
+  distinct() %>% 
+  left_join(Midori_lr_tax,.) %>% 
+  mutate(ID = gsub("(.+?);tax=.+", "\\1", seqname))
+
+#check that ID's are unique
+length(Midori_lr_newname$ID) == unique(length(Midori_lr_newname$ID))
+```
+
+replace Midori_lr taxonomy
+
+example name
+```{r}
+names(Midori_lr)[1]
+```
+
+
+```{r}
+
+Midori_lr_newseqname <- 
+Midori_lr_newname %>% 
+  select(seqname, ID, starts_with("gbif")) %>% 
+  mutate(gbif_species = gsub(" ", "_", gbif_species)) %>% #no spaces in sequence names for vsearch
+  pivot_longer(!one_of("ID", "seqname"), names_to = "taxlev", values_to = "tax") %>% 
+  mutate(taxlev = gsub("gbif_(\\w).+", "\\1", taxlev)) %>% 
+  mutate(taxp = paste(taxlev, tax, sep = ":")) %>% 
+  select(seqname, ID, taxp) %>% 
+  group_by(seqname, ID) %>% 
+  summarise(taxs = paste(taxp, collapse = ",")) %>% 
+  mutate(newSeqname = paste(ID, ";tax=",taxs,";", sep = ""))
+
+Midori_lr_gbif <- Midori_lr
+
+#reorder sequences to match dataframe
+Midori_lr_gbif <- Midori_lr_gbif[match(Midori_lr_newseqname$ID, gsub("(.+?);.+", "\\1", names(Midori_lr_gbif)))]
+
+#rename seqeunces
+names(Midori_lr_gbif) <- Midori_lr_newseqname$newSeqname
+
+#export
+writeXStringSet(Midori_lr_gbif, here("Data", "Vertebrates", "in_files", "Midori_lr_gbif.fa"))
+
+#version with only sequences with species level assignment
+Midori_lr_gbif_species <- Midori_lr_gbif[!grepl(",s:NA", names(Midori_lr_gbif))]
+
+#export
+writeXStringSet(Midori_lr_gbif_species, here("Data", "Vertebrates", "in_files", "Midori_lr_gbif_sp.fa"))
+```
+
+export seqname tax df
+```{r}
+Midori_lr_seqname_tax <- 
+Midori_lr_newseqname %>% 
+  ungroup() %>% 
+  select(ID, newSeqname) %>% 
+  left_join(select(Midori_lr_newname, ID, starts_with("gbif"))) %>% 
+  rename_all(~gsub("gbif_", "", .x)) %>% 
+  select(-ID)
+
+write_tsv(Midori_lr_seqname_tax, here("Data", "Vertebrates", "in_files", "Midori_lr_gbif_tax.txt"))
+Midori_lr_seqname_tax <- read_tsv(here("Data", "Vertebrates", "in_files", "Midori_lr_gbif_tax.txt"))
+
+Arth_16S <- Midori_lr_seqname_tax %>% filter(phylum == "Chordata") %>% group_by(genus, species) %>%  summarise(n = n())
+Arth_COI <- Midori_seqname_tax %>% filter(phylum == "Chordata") %>% group_by(genus, species) %>% summarise(n = n())
+
+bind_rows(Arth_16S, Arth_COI) %>% select(-n) %>% distinct()
+```
+
+##BOLD Data
+
+```{r}
+
+# Function to process FASTA and load into SQLite
+process_fasta_to_db <- function(filepath, db_name, chunk_size = 1000) {
+  # Create SQLite connection
+  conn <- dbConnect(SQLite(), dbname = db_name)
+  
+  # Initialize database with a table
+  dbExecute(conn, "CREATE TABLE fasta_data (
+    sample_id TEXT,
+    marker TEXT,
+    country TEXT,
+    kingdom TEXT,
+    phylum TEXT,
+    class TEXT,
+    order_col TEXT,
+    family TEXT,
+    subfamily TEXT,
+    genus TEXT,
+    species TEXT,
+    subspecies TEXT,
+    sequence TEXT
+  );")
+  
+  # Initialize counters
+  skip_lines <- 0
+  
+  repeat {
+    #progress
+    message(paste("reading lines" , skip_lines, "to", skip_lines+chunk_size, "...", sep = " "))
+    
+    # Read chunk
+    chunk <- readDNAStringSet(filepath, format = "fasta", skip = skip_lines, nrec = chunk_size)
+    
+    # Break if no sequences left
+    if (length(chunk) == 0) break
+    
+    # Extract headers and sequences
+    headers <- names(chunk)
+    sequences <- as.character(chunk)
+    
+    # Parse metadata from headers
+    metadata <- str_split_fixed(headers, "\\|", n = 4)
+    taxonomy <- str_split_fixed(metadata[, 4], ",", n = 9)
+    
+    # Create a data frame
+    fasta_data <- data.frame(
+      sample_id = metadata[, 1],
+      marker = metadata[, 2],
+      country = metadata[, 3],
+      kingdom = taxonomy[, 1],
+      phylum = taxonomy[, 2],
+      class = taxonomy[, 3],
+      order_col = taxonomy[, 4],
+      family = taxonomy[, 5],
+      subfamily = taxonomy[, 6],
+      genus = taxonomy[, 7],
+      species = taxonomy[, 8],
+      subspecies = taxonomy[, 9],
+      sequence = sequences,
+      stringsAsFactors = FALSE
+    )
+    
+    # Write data to the database
+    dbWriteTable(conn, "fasta_data", fasta_data, append = TRUE, row.names = FALSE)
+    
+    # Update skip_lines
+    skip_lines <- skip_lines + chunk_size
+  }
+  
+  # Close connection
+  dbDisconnect(conn)
+  
+  return(db_name)
+}
+```
+
+```{r}
+# Process the FASTA file and populate the database
+db_name <- here("Data", "Insects", "in_files", "BOLD_Public.sqlite")
+fasta_file <- here("Data", "Insects", "in_files", "BOLD_Public.27-Sep-2024.fasta")
+process_fasta_to_db(fasta_file, db_name, chunk_size = 1e6)
+```
+
+split into taxonomy and sequence table
+```{r}
+
+# Connect to the database
+db_name <- here("Data", "Insects", "in_files", "BOLD_Public.sqlite")
+conn <- dbConnect(RSQLite::SQLite(), dbname = db_name)
+
+# Step 1: Create the taxonomy table with a primary key
+dbExecute(conn, "DROP TABLE IF EXISTS taxonomy;")
+dbExecute(conn, "
+  CREATE TABLE taxonomy (
+    taxonomy_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kingdom TEXT,
+    phylum TEXT,
+    class TEXT,
+    order_col TEXT,
+    family TEXT,
+    subfamily TEXT,
+    genus TEXT,
+    species TEXT
+  );
+")
+
+# Insert distinct taxonomy records into the taxonomy table
+dbExecute(conn, "
+  INSERT INTO taxonomy (kingdom, phylum, class, order_col, family, subfamily, genus, species)
+  SELECT DISTINCT kingdom, phylum, class, order_col, family, subfamily, genus, species
+  FROM fasta_data;
+")
+
+# Step 2: Create the sequences table with a reference to taxonomy_id
+dbExecute(conn, "DROP TABLE IF EXISTS sequences;")
+dbExecute(conn, "
+  CREATE TABLE sequences AS
+  SELECT 
+    f.sample_id,
+    f.marker,
+    f.country,
+    t.taxonomy_id,
+    f.sequence
+  FROM fasta_data f
+  INNER JOIN taxonomy t
+  ON f.kingdom = t.kingdom
+     AND f.phylum = t.phylum
+     AND f.class = t.class
+     AND f.order_col = t.order_col
+     AND f.family = t.family
+     AND f.subfamily = t.subfamily
+     AND f.genus = t.genus
+     AND f.species = t.species;
+")
+
+```
+
+get gbif taxonomy
+```{r}
+db_name <- here("Data", "Insects", "in_files", "BOLD_Public.sqlite")
+conn <- dbConnect(RSQLite::SQLite(), dbname = db_name)
+
+taxonomy_tbl <- tbl(conn, "taxonomy")
+
+Bold_tax_gbif <- collect(taxonomy_tbl)
+
+Bold_tax_gbif <- 
+  Bold_tax_gbif %>% 
+  dplyr::rename(order = order_col) %>%
+  mutate(across(-taxonomy_id, ~gsub("^None$", NA, .x)))
+
+# Define the chunk size
+chunk_size <- 2000
+
+# Define the path to save intermediate results
+save_path <- here("Data", "Insects", "in_files")
+
+bold_gbif_out <- process_dataframe_in_chunks(Bold_tax_gbif, chunk_size, save_path)
+
+write_tsv(bold_gbif_out, here("Data", "Insects", "in_files", "Bold_gbif.txt"))
+
+# Delete chunk files
+chunk_files <- list.files(save_path, pattern = "\\.rds$", full.names = TRUE)
+file.remove(chunk_files)
+
+```
+
+make new database with gbif taxonomy
+```{r}
+bold_gbif_out <- 
+  dplyr::rename(bold_gbif_out, verbatim_species = verbatim_name) %>% 
+  select(starts_with("verbatim"), kingdom, phylum, class, order, family, genus, species) %>% 
+  select(-verbatim_index) %>% 
+  distinct()
+
+gbif_taxonomy <- 
+  Bold_tax_gbif %>%
+  rename_with(~ paste("verbatim", ., sep = "_"), -taxonomy_id) %>% 
+  left_join(bold_gbif_out) %>% 
+  select(taxonomy_id, kingdom, phylum, class, order, family, genus, species) 
+
+#add sintax taxonomy string 
+gbif_taxonomy <- 
+gbif_taxonomy %>% 
+ mutate(species = gsub(" ", "_", species)) %>% #no spaces in sequence names for vsearch
+  pivot_longer(!one_of("taxonomy_id"), names_to = "taxlev", values_to = "tax") %>% 
+  mutate(taxlev = gsub("(\\w).+", "\\1", taxlev)) %>% 
+  mutate(taxp = paste(taxlev, tax, sep = ":")) %>% 
+  select(taxonomy_id, taxp) %>% 
+  group_by(taxonomy_id) %>% 
+  summarise(sinatx_tax = paste(taxp, collapse = ",")) %>% 
+  left_join(gbif_taxonomy, .)
+
+# Create sequences table by writing directly to the database
+dbExecute(conn, "DROP TABLE IF EXISTS gbif_taxonomy;") 
+
+# write gbif taxonomy table
+dbWriteTable(conn, "gbif_taxonomy", gbif_taxonomy, row.names = FALSE)
+```
+
+```{r}
+# 1. Load the sequence table as a dplyr table
+sequence_tbl <- tbl(conn, "sequences")
+
+# 2. Load the GBIF taxonomy table as a dplyr table
+gbif_tax_tbl <- tbl(conn, "gbif_taxonomy")
+
+# 3. Join the two tables on tax_id
+joined_tbl <- sequence_tbl %>%
+  inner_join(gbif_tax_tbl, by = "taxonomy_id")
+
+# 4. Filter for the marker of interest
+filtered_tbl <- joined_tbl %>%
+  filter(marker == "COI-5P")
+
+# Separate sequences with and without species-level assignments
+sequences_with_species <- filtered_tbl %>%
+  filter(!is.na(species))
+
+sequences_without_species <- filtered_tbl %>%
+  filter(is.na(species))
+
+# Sample max 10 sequences per species for those with species-level assignments
+sampled_with_species <- sequences_with_species %>%
+  group_by(species) %>%
+  slice_sample(n = 10, replace = FALSE) %>%
+  ungroup()
+
+# Combine both datasets
+final_sequences_tbl <- sampled_with_species %>%
+  union_all(sequences_without_species)
+
+# 5. Create the new sequence name
+result_tbl <- final_sequences_tbl %>%
+  mutate(sequence_name = paste0(sample_id, ";tax=", sinatx_tax, sep = "")) %>%
+  select(sequence_name, sequence) %>% 
+  compute()
+
+# 6. Write the sequences to a FASTA file in chunks
+output_fasta <- here("Data", "Insects", "in_files", "Bold_gbif_COI.fasta")
+
+# Remove existing FASTA file if it exists
+if (file.exists(output_fasta)) file.remove(output_fasta)
+
+
+# Loop through the database table in chunks
+
+# Define chunk size
+chunk_size <- 1000000
+
+# Step 3: Initialize pagination
+offset <- 0
+
+repeat {
+  # progress: 
+  message(paste("processing lines", offset, "to", offset + chunk_size, "..."))
+  
+  # Use dplyr to slice a chunk from the computed table
+  chunk <- 
+    result_tbl %>% 
+    filter(row_number() > offset & row_number() <= (offset + chunk_size)) %>%
+    collect()
+  
+  # Break the loop if no more rows are fetched
+  if (nrow(chunk) == 0) break
+  
+  # Convert the chunk into DNAStringSet
+  dna_set <- chunk$sequence
+  names(dna_set) <- chunk$sequence_name
+  dna_set <- DNAStringSet(dna_set)
+  
+  # Append the chunk to the FASTA file
+  writeXStringSet(dna_set, filepath = output_fasta, append = TRUE)
+  
+  # Increment the offset
+  offset <- offset + chunk_size
+}
+```
+
+
+```{r}
+# Connect to the database
+conn <- dbConnect(SQLite(), dbname = db_name)
+
+# Use dplyr to interact with the database
+fasta_tbl <- tbl(conn, "fasta_data")
+
+# Example 1: Count total records
+fasta_tbl %>%
+  summarise(total_records = n()) %>%
+  collect()
+
+# the marker we want is COI-5P
+fasta_tbl %>% group_by(marker) %>% summarise(n = n()) %>% collect()
+
+Taxa_unique <- 
+fasta_tbl %>% 
+  filter(marker == "COI-5P") %>% 
+  group_by(kingdom,phylum,class,order_col,family,subfamily,genus,species) %>% 
+  summarise(n =n()) %>% 
+  collect()
+```
+
+
+
+## Swiss Vertebrates
+
+GBIF.org (13 November 2024) GBIF Occurrence Download  https://doi.org/10.15468/dl.ujk7mf
+
+Basis of record: Observation Machine; observation Human; observation
+Country or area: Switzerland
+Scientific name: Chordata
+
+```{r}
+SwissVert_gbif <- read_tsv(here("Data", "Vertebrates", "in_files", "0012786-241107131044228.csv"))
+
+SwissVert_gbif <- 
+SwissVert_gbif %>% 
+  select(phylum, class, order, family, genus, species, iucnRedListCategory, numberOfOccurrences) 
+
+SwissVert_gbif <-  
+SwissVert_gbif %>% 
+  group_by(genus) %>% 
+  filter(
+        !is.na(species) | all(is.na(species))
+      ) %>% 
+  group_by(phylum, class, order, family, genus, species) %>% 
+  reframe(iucnRedListCategory = unique(iucnRedListCategory[!is.na(iucnRedListCategory)]),
+            numberOfOccurrences = sum(numberOfOccurrences)) %>% 
+  mutate(inGbif = TRUE) %>% 
+  group_by(genus, species) %>% 
+  mutate(iucnRedListCategory = case_when(n() > 1 ~ NA_character_, 
+                                         TRUE ~ iucnRedListCategory)) %>% 
+  distinct()
+
+
+write_tsv(SwissVert_gbif, here("Data", "Vertebrates", "in_files", "SwissVert_gbif.txt"))
+```
+
+
+
+
+
+
+
+##Unite_Swiss_Plants
+
+We want a curated reference databases which contains only the species known to occur in Switzerland
+
+As not all species from InfoFlora are present in either Unite or PlantITS, we attempt to search for the sequences on NCBI & BOLD
+
+### bold & ncbi
+```{r}
+InfoFlora_sp <- 
+species_venn_df %>% 
+  filter(InfoFlora & !Unite & !plantITS) %>% pull(species)
+
+InfoFlora_bold <- 
+  InfoFlora_sp %>% 
+  split(., ceiling(seq_along(.)/200)) %>% 
+  lapply(., function(x) bold_seqspec(taxon = x)) %>% 
+  bind_rows()
+
+InfoFlora_bold_seq <- 
+InfoFlora_bold %>% 
+  filter(markercode == "ITS2") %>% 
+  select(sequenceID, species_name, nucleotides) %>% 
+  dplyr::rename(ID = sequenceID) %>% 
+  distinct()
+
+InfoFlora_ncbi <- 
+  InfoFlora_sp %>% 
+  split(., ceiling(seq_along(.)/50)) %>% 
+  lapply(., function(x) {refdb_import_NCBI(
+    query = paste("(", paste0(
+      x, "[Organism]", collapse = " OR "),
+      ")",
+      " AND ITS2[All Fields] AND gene[All Fields]",
+      sep = ""))})
+
+InfoFlora_ncbi_seq <- 
+InfoFlora_ncbi %>% 
+  bind_rows() %>% 
+  select(id, species, sequence) %>% 
+  dplyr::rename(ID = id) %>% 
+  distinct()
+
+IF_eu_df <- 
+tibble(species = InfoFlora_sp) %>% 
+  left_join(InfoFlora_ncbi_seq) %>% 
+  select(-ID) %>% 
+  dplyr::rename(NCBI = sequence) %>% 
+  mutate(NCBI = !is.na(NCBI)) %>% 
+  distinct() %>% 
+  left_join(dplyr::rename(InfoFlora_bold_seq, species = species_name)) %>% 
+  select(-ID) %>% 
+  dplyr::rename(BOLD = nucleotides) %>% 
+  mutate(BOLD = !is.na(BOLD)) %>% 
+  distinct() %>% 
+  mutate(InfoFlora = TRUE) %>% 
+  mutate(Beaver = species %in% Beaver_plants_gbif$species) 
+
+IF_eu <- 
+  IF_eu_df %>% 
+  select(-species) %>% 
+  euler(shape = "ellipse") 
+
+plot(IF_eu, legend = TRUE, quantities = TRUE)
+```
+
+
+```{r}
+IF_eu_df %>% filter(Beaver & !NCBI & !BOLD)
+```
+
+
+## SwissPlants
+get species from each database
+```{r}
+Unite_ch <- 
+species_venn_df %>% 
+  filter(InfoFlora & Unite) %>% 
+  pull(species)
+
+PlantITS_ch_u <- 
+species_venn_df %>% 
+  filter(InfoFlora & plantITS & !Unite) %>% 
+  pull(species)
+
+Bold_NCBI_u <- 
+  IF_eu_df %>% 
+  filter(BOLD | NCBI)
+```
+
+##get sequences
+
+for species with more than 10 reference sequences in the database I keep the 10 longest sequences
+
+###Unite
+
+```{r}
+Unite_seqs <- 
+Unite_tax_newname %>%
+  ungroup() %>% 
+  left_join(tibble(ID = names(Unite), len = width(Unite))) %>% 
+  filter(gbif_species %in% Unite_ch) %>% 
+  group_by(gbif_species, SH) %>% 
+  arrange(species, SH, desc(len)) %>% 
+  dplyr::slice(min(10, n())) %>% 
+  pull(ID)
+```
+
+```{r}
+Unite_sub <- Unite[Unite_seqs]
+
+Unite_sub_names <- 
+Unite_tax_newseqname %>%
+  ungroup() %>% 
+  dplyr::slice(match(names(Unite_sub),ID)) %>% 
+  pull(newSeqname)
+
+names(Unite_sub) <- Unite_sub_names
+```
+
+###PlantITS
+```{r}
+PlantITS_seq <- 
+  PlantITS_tax_newname %>% 
+  ungroup() %>% 
+  left_join(tibble(Seqname = names(plantITS), len = width(plantITS))) %>% 
+  filter(gbif_species %in% PlantITS_ch_u) %>% 
+  group_by(gbif_species) %>% 
+  arrange(species, desc(len)) %>% 
+  dplyr::slice(min(10, n())) %>% 
+  pull(Seqname)
+
+PlantITS_sub <- plantITS[PlantITS_seq]
+
+PlantITS_sub_names <- 
+PlantITS_newseqname %>%
+  ungroup() %>% 
+  dplyr::slice(match(names(PlantITS_sub),Seqname)) %>% 
+  pull(newSeqname)
+
+names(PlantITS_sub) <- PlantITS_sub_names
+```
+
+###ncbi & bold
+```{r}
+
+ncbi_bold_seq <- 
+InfoFlora_bold_seq %>% 
+  dplyr::rename(sequence = nucleotides, species = species_name) %>% 
+  mutate(sequence = gsub("-", "", sequence)) %>% 
+  mutate(ID = as.character(ID)) %>% 
+  bind_rows(InfoFlora_ncbi_seq) %>% 
+  distinct() %>% 
+  mutate(len = nchar(sequence)) %>% 
+  group_by(species) %>% 
+  arrange(species, desc(len)) %>% 
+  dplyr::slice(min(10, n()))
+ 
+ncbi_bold_seq_names <- 
+  ncbi_bold_seq %>% 
+  select(ID, species) %>% 
+  name_backbone_checklist() %>% 
+  mutate(ID = ncbi_bold_seq$ID[.$verbatim_index]) %>% 
+  select(ID, kingdom, phylum, class, order, family, genus, species) %>% 
+  filter(!is.na(species)) %>% 
+  filter(species %in% InfoFlora_gbif$species) %>% 
+  pivot_longer(-ID, names_to = "taxlev", values_to = "tax") %>% 
+  mutate(taxlev = gsub("(\\w).+", "\\1", taxlev)) %>% 
+  mutate(taxp = paste(taxlev, tax, sep = ":")) %>% 
+  select(ID, taxp) %>% 
+  group_by(ID) %>% 
+  summarise(taxs = paste(taxp, collapse = ",")) %>% 
+  mutate(newSeqname = paste(ID, ";tax=",taxs,";", sep = ""))
+
+ncbi_bold_seq <- 
+  ncbi_bold_seq %>% 
+  left_join(ncbi_bold_seq_names) %>% 
+  filter(!is.na(newSeqname))
+
+
+ncbi_bold_ch <- DNAStringSet(ncbi_bold_seq$sequence)
+names(ncbi_bold_ch) <- ncbi_bold_seq$newSeqname
+```
+
+##join
+
+```{r}
+Plants_CH <- 
+c(Unite_sub, PlantITS_sub, ncbi_bold_ch)
+
+#ITSx chops off the seqname after a space, so we need to remove them
+names(Plants_CH) <- gsub("\\s", "_", names(Plants_CH))
+
+writeXStringSet(Plants_CH, here("Data", "Plants_CH_refDB.fasta"), width = max(width(Plants_CH)))
+```
+
+##ITSx
+```{r}
+cores = 6
+
+#copy files to downloads because of path problems (space in path)
+system2(command = "cp", 
+        args = c(shQuote(here("Data", "Plants_CH_refDB.fasta")),
+                 "~/Downloads/"))
+
+#create tmp output directory 
+dir.create("~/Downloads/ITSX_out")
+
+system(paste("source ~/.bash_profile && /Applications/ITSx_1.1.3/ITSx",
+             "ITSx -i ",
+             "~/Downloads/Plants_CH_refDB.fasta ",
+             "-o ~/Downloads/ITSX_out/ITSx ", 
+             "-t all ",
+             "--allow_single_domain '1e-5' ",
+             "--complement F ",
+             "--save_regions ITS2 ",
+             "--cpu ", 
+             cores
+             ))
+
+#move results
+system2(command = "mv", 
+        args = c("~/Downloads/ITSX_out",
+                 shQuote(here("Data"))))
+
+#clean up
+file.remove("~/Downloads/Plants_CH_refDB.fasta")
+```
+
+read in sequences with ITS2 domains
+
+```{r}
+ITSx_pos <- read_tsv(here("Data", "ITSX_out", "ITSx.positions.txt"), col_names = F) %>% 
+  `colnames<-`(c("newSeqname", "length", "SSU", "ITS1", "S58", "ITS2", "LSU", "tab")) %>% 
+  select(-tab)
+
+#4 sequences have no ITS2 (they most stop after ITS1)
+ITSx_pos %>% 
+  filter(grepl("Not found", ITS2)) %>% 
+  nrow()
+
+ITS2_pos <- 
+ITSx_pos %>% 
+  mutate(ITS2 = gsub("ITS2: ", "", ITS2)) %>% 
+  tidyr::separate(ITS2, into = c("ITS2_start", "ITS2_end"), sep = "-") %>% 
+  mutate(across(starts_with("ITS"), as.numeric)) %>% 
+  mutate(ITS2_len = ITS2_end - ITS2_start) %>% 
+  mutate(newSeqname = gsub("_", " ", newSeqname)) %>% 
+  filter(newSeqname != "--END--") #not sure why these arise
+```
+
+
+```{r}
+names(Plants_CH) <- gsub("_", " ", names(Plants_CH))
+
+#check if all sequence names are found
+ITS2_pos$newSeqname[which(!ITS2_pos$newSeqname %in% names(Plants_CH))]
+
+#check if sequences from Plants_CH are missing
+sum(!names(Plants_CH) %in% ITS2_pos$newSeqname)
+
+#199 Sequences are missing. These are in the file ITSx_no_detections.fasta 
+readDNAStringSet(here("Data", "ITSX_out", "ITSx_no_detections.fasta")) %>% 
+  length()
+
+```
+
+```{r}
+Plants_CH_ITS <- Plants_CH
+
+#exclude sequences were ITS2 was not found
+ITS_pos_clean <- 
+ITS2_pos %>% 
+  filter(!is.na(ITS2_len))
+
+#get cumulativve size distribution
+ITS_pos_clean %>% 
+  group_by(ITS2_len) %>% 
+  summarise(n_len = n()) %>% 
+  arrange(ITS2_len) %>% 
+  mutate(cum_prct = cumsum(n_len/sum(n_len))) %>% 
+  ggplot(aes(x = ITS2_len,y = cum_prct))+
+  geom_line()+
+  scale_x_continuous(limits = c(0,1000))+
+  geom_vline(xintercept = c(50, 500))
+
+#we filter sequences <50 and above 500 bps
+ITS_pos_clean <- 
+  ITS_pos_clean %>% 
+  filter(ITS2_len > 50) %>% 
+  filter(ITS2_len < 500)
+```
+
+
+```{r}
+#subset DB and make sure sequence order matches
+Plants_CH_ITS <- Plants_CH_ITS[ITS_pos_clean$newSeqname]
+
+all(names(Plants_CH_ITS) == ITS_pos_clean$newSeqname)
+
+#subset sequences for only ITS2
+Plants_CH_ITS <- subseq(Plants_CH_ITS, ITS_pos_clean$ITS2_start, ITS_pos_clean$ITS2_end)
+
+#export
+writeXStringSet(seq_ITS2, here("Data", "Plants_CH_refDB_ITSx.fasta"), format = "fasta")
+```
+
+```{r}
+P_Frwd <- "ATGCGATACTTGGTGTGAAT" 
+P_Rev <- "GACGCTTCTCCAGACTACAAT" %>% DNAString() %>% reverseComplement() %>% as.character()
+
+Plant_seqs <- 
+Unite_tax_newname %>% 
+  left_join(distinct(select(Unite_tax_gbif_out, kingdom, phylum))) %>% 
+  filter(kingdom == "Plantae") %>% 
+  left_join(Unite_tax_newseqname) %>% 
+  filter(ID_short %in% fullSeq) %>% 
+  pull(var = ID_short) %>% 
+  unique()
+
+Unite_full_gbif_P <- Unite[which(gsub("(.+?)\\|.+", "\\1", names(Unite)) %in% Plant_seqs)]
+
+c(DNAStringSet(P_Frwd),Unite[1:3]) %>% AlignSeqs() %>% BrowseSeqs()
+  
+
+vmatchPattern(P_Frwd, Unite_full_gbif_P[1:100], max.mismatch=3, fixed = FALSE)
+as.numeric(min(end(vmatchPattern(P_Rev, Unite_full_gbif_P[1:100], max.mismatch=3, fixed = FALSE))))
+
+revT <- vcountPattern(P_Rev, Unite_full_gbif_P, max.mismatch = 3, fixed = FALSE) > 0
+Unite_frwd <- subseq(Unite_full_gbif_P[revT], start = as.numeric(start(vmatchPattern(P_Frwd, Unite_full_gbif_P[revT], max.mismatch = 3, fixed = FALSE))), end = Inf)
+
+fullSeq <- 
+ITSx_pos %>% 
+  filter(!grepl("Not found", LSU)) %>% 
+  filter(!grepl("Not found", S58)) %>% 
+  pull(Seq) %>% 
+  gsub("(.+?);.+", "\\1", .)
+
+
+c(DNAStringSet(P_Rev), Unite_full_gbif_P[7:11]) %>% AlignSeqs() %>% BrowseSeqs()
+
+```
+
+
+
+
+##ITSx
+```{r}
+cores = 6
+
+#copy files to downloads because of path problems (space in path)
+system2(command = "cp", 
+        args = c(shQuote(here("Data", "Plant_ITS_db", "its2.global.2023-01-17.curated.tax.mc.add.fa")),
+                 "~/Downloads/"))
+
+#create tmp output directory 
+dir.create("~/Downloads/ITSX_out")
+
+system(paste("source ~/.bash_profile && /Applications/ITSx_1.1.3/ITSx",
+             "ITSx -i ",
+             "~/Downloads/its2.global.2023-01-17.curated.tax.mc.add.fa ",
+             "-o ~/Downloads/ITSX_out/ITSx ", 
+             "-t all ",
+             "--allow_single_domain '1e-5' ",
+             "--complement F ",
+             "--save_regions ITS2 ",
+             "--cpu ", 
+             cores
+             ))
+
+#move results
+system2(command = "mv", 
+        args = c("~/Downloads/ITSX_out",
+                 shQuote(here("Data", "Plant_ITS_db"))))
+
+#clean up
+file.remove("~/Downloads/its2.global.2023-01-17.curated.tax.mc.add.fa")
+```
+
+read in sequences with ITS2 domains
+
+```{r}
+ITSx_pos <- read_tsv(here("Data", "Plant_ITS_db", "ITSX_out", "ITSx.positions.txt"), col_names = F) %>% 
+  `colnames<-`(c("newSeqname", "length", "SSU", "ITS1", "S58", "ITS2", "LSU", "tab")) %>% 
+  select(-tab)
+
+#892 sequences have no ITS2 (they most stop after ITS1)
+ITSx_pos %>% 
+  filter(grepl("Not found", ITS2)) %>% 
+  nrow()
+
+ITS2_pos <- 
+ITSx_pos %>% 
+  filter(!grepl("Not found", ITS2)) %>% 
+  mutate(ITS2 = gsub("ITS2: ", "", ITS2)) %>%
+  tidyr::separate(ITS2, into = c("ITS2_start", "ITS2_end"), sep = "-") %>%
+  mutate(across(starts_with("ITS"), as.numeric)) %>%
+  mutate(ITS2_len = ITS2_end - ITS2_start) %>% 
+  mutate(ID = gsub("(.+?);tax=.+", "\\1", newSeqname)) %>%
+  dplyr::rename(ITSx_newseqname = newSeqname) %>% 
+  left_join(select(ungroup(its_global_newseqname), ID, newSeqname)) %>% 
+  filter(!is.na(newSeqname)) %>% 
+  select(-ITSx_newseqname) %>% 
+  dplyr::relocate(newSeqname, .before = NULL)
+  
+```
+
+
+```{r}
+ITS_global_gbif <- readDNAStringSet(here("Data", "Plant_ITS_db", "its_global_gbif.fa"))
+
+#check if all sequence names are found 
+Missing_seq <- which(!ITS2_pos$newSeqname %in% names(ITS_global_gbif))
+
+#check if sequences from ITS_global are missing
+sum(!names(ITS_global_gbif) %in% ITS2_pos$newSeqname)
+
+#16272 Sequences are missing. Most of these are in the file ITSx_no_detections.fasta 
+readDNAStringSet(here("Data", "Plant_ITS_db", "ITSX_out", "ITSx_no_detections.fasta")) %>% 
+  length()
+
+```
+
+```{r}
+
+#get cumulative size distribution
+ITS2_pos %>% 
+  group_by(ITS2_len) %>% 
+  summarise(n_len = n()) %>% 
+  arrange(ITS2_len) %>% 
+  mutate(cum_prct = cumsum(n_len/sum(n_len))) %>% 
+  ggplot(aes(x = ITS2_len,y = cum_prct))+
+  geom_line()+
+  scale_x_continuous(limits = c(0,1000))+
+  geom_vline(xintercept = c(50, 500))
+
+#we filter sequences <100 and above 300 bps
+ITS2_pos_f <- 
+  ITS2_pos %>% 
+  filter(ITS2_len >= 100) %>% 
+  filter(ITS2_len <= 500)
+
+nrow(ITS2_pos) - nrow(ITS2_pos_f)
+```
+
+
+```{r}
+#subset DB and make sure sequence order matches
+ITS_global_ITS2 <- ITS_global_gbif[ITS2_pos_f$newSeqname]
+
+all(names(ITS_global_ITS2) == ITS2_pos_f$newSeqname)
+
+#subset sequences for only ITS2
+ITS_global_ITS2 <- subseq(ITS_global_ITS2, ITS2_pos_f$ITS2_start, ITS2_pos_f$ITS2_end)
+
+#export
+writeXStringSet(ITS_global_ITS2, here("Data", "Plant_ITS_db", "ITS_global_ITS2.fasta"), format = "fasta")
+
+#read
+ITS_global_ITS2 <- readDNAStringSet(here("Data", "Plant_ITS_db", "ITS_global_ITS2.fasta"))
+```
+
+```{r}
+system2( "/Applications/vsearch/bin/vsearch",
+         args= c("--cluster_fast", 
+                 shQuote(here("Data", "Plant_ITS_db", "ITS_global_ITS2.fasta")),
+                 "--id 1.0",
+                 "--uc",
+                 shQuote(here("Data", "Plant_ITS_db", "ITS_global_clusters.uc")),
+                 "--threads 6"
+                 )
+)
+```
+
+
+```{r}
+ID_seq <- read_tsv(here("Data", "Plant_ITS_db", "ITS_global_clusters.uc"))
+
+colnames(ID_seq) <- c(
+  "Type", "ClusterNumber", "SequenceLength", "PercentageIdentity",
+  "Strand", "Unused1", "Unused2", "Unused3", "QueryLabel", "TargetLabel"
+)
+
+# Extract the sequence ID 
+ID_seq <- ID_seq %>%
+  mutate(
+    ID = str_extract(QueryLabel, "^[^;]+"),
+  )
+
+its_global_ID_to_tax <- 
+  its_global_newname %>% 
+  select(ID, starts_with("gbif")) %>% 
+  dplyr::rename_all(~gsub("gbif_", "", .))
+
+# Join the taxonomy 
+ID_seq <- ID_seq %>%
+  left_join(its_global_ID_to_tax) 
+```
+
+```{r}
+
+
+# Assume 'ID_seq' is your dataframe with columns:
+# Type, ClusterNumber, ID, species, genus, family
+
+# Ensure we have unique combinations of ClusterNumber, ID, and species
+cluster_species <- ID_seq %>%
+  select(ClusterNumber, ID, species, genus, family) %>%
+  distinct()
+
+# Get the clusters each species appears in
+species_clusters <- cluster_species %>%
+  select(ClusterNumber, species) %>%
+  distinct()
+
+# Create a mapping of clusters to species
+cluster_to_species <- species_clusters
+
+# For each species, find all other species in the same clusters
+species_cooccurrence <- species_clusters %>%
+  inner_join(cluster_to_species, by = "ClusterNumber",  relationship = "many-to-many") %>%
+  filter(species.x != species.y) %>%  # Exclude self-matches
+  group_by(species.x) %>%
+  summarise(
+    CooccurringSpecies = paste(unique(species.y), collapse = "|"),
+    CooccurringSpeciesCount = n_distinct(species.y)
+  ) %>%
+  dplyr::rename(species = species.x)
+
+# Get all unique species
+all_species <- cluster_species %>% select(species) %>% distinct()
+
+# Left join to include species with no co-occurrences
+species_cooccurrence_full <- all_species %>%
+  left_join(species_cooccurrence, by = "species") %>%
+  mutate(
+    CooccurringSpecies = ifelse(is.na(CooccurringSpecies), "", CooccurringSpecies),
+    CooccurringSpeciesCount = ifelse(is.na(CooccurringSpeciesCount), 0L, CooccurringSpeciesCount)
+  )
+
+```
+
+
+check for Swiss species
+```{r}
+InfoFlora_check <- 
+  InfoFlora_gbif %>% 
+  distinct() %>% 
+  mutate(in_ref_db = species %in% ID_seq$species) %>% 
+  left_join(species_cooccurrence_full) %>% 
+  filter(CooccurringSpecies != "") %>% 
+  separate_rows(CooccurringSpecies, sep = "\\|") %>%
+mutate(
+    IsInSpeciesList = CooccurringSpecies %in% species
+  ) %>% 
+  group_by(species)  %>% 
+  summarise(
+    CooccurringSpeciesCount = unique(CooccurringSpeciesCount),
+    AnyMatchingSpecies = any(IsInSpeciesList),
+    cooccurrence_with_list = paste(unique(CooccurringSpecies[IsInSpeciesList]), collapse = "|"),
+    CooccurringSpecies = paste(CooccurringSpecies, collapse = "|"),
+    .groups = 'drop'
+  )
+  
+InfoFlora_check %>% 
+  filter(AnyMatchingSpecies) %>% select(species, cooccurrence_with_list) %>% View()
+```
+
+```{r}
+Beaver_check <- 
+Beaver_plants_gbif %>% 
+  select(-verbatim_name) %>% 
+  distinct() %>% 
+  mutate(in_ref_db = species %in% ID_seq$species) %>% 
+  left_join(species_cooccurrence_full) %>% 
+  filter(CooccurringSpecies != "") %>% 
+  separate_rows(CooccurringSpecies, sep = "\\|") %>%
+mutate(
+    IsInSpeciesList = CooccurringSpecies %in% species
+  ) %>% 
+  group_by(species)  %>% 
+  summarise(
+    CooccurringSpeciesCount = unique(CooccurringSpeciesCount),
+    AnyMatchingSpecies = any(IsInSpeciesList),
+    cooccurrence_with_list = paste(unique(CooccurringSpecies[IsInSpeciesList]), collapse = "|"),
+    CooccurringSpecies = paste(CooccurringSpecies, collapse = "|"),
+    .groups = 'drop'
+  )
+  
+mutate(
+    cooccurrence_with_list = ifelse(is.na(cooccurrence_with_list), "", cooccurrence_with_list),
+    AnyMatchingSpecies = ifelse(is.na(AnyMatchingSpecies), FALSE, AnyMatchingSpecies)
+  )
+  
+Beaver_check %>% 
+  filter(AnyMatchingSpecies) %>% select(species, cooccurrence_with_list)
+  filter(cooccurence_beaver)
+```
+
+
+
+
+#comapre refDBs
+
+```{r}
+Beaver_plants <- read_xlsx(here("Data", "data_vegetation.xlsx"), sheet = "pivot_data")
+
+Beaver_plant_table <- 
+  select(Beaver_plants, c(1,57:438)) %>% 
+  group_by(Site) %>% 
+  mutate(across(everything(), ~ifelse(is.na(.), 0, .))) %>% 
+  summarise(across(everything(), sum))
+  
+
+Beaver_plants_tax <- tibble(species = colnames(Beaver_plant_table)[-1])
+
+Beaver_plants_gbif <- 
+rgbif::name_backbone_checklist(Beaver_plants_tax, kingdom = "Plantae")
+
+Beaver_plants_gbif <- 
+Beaver_plants_gbif %>% 
+  select(verbatim_name, kingdom, phylum, class, order, family, genus, species)
+```
+
+```{r}
+InfoFlora <- read_xlsx(here("Data", "Checklist_2017_simple_version_20230503.xlsx"), skip = 5)
+
+InfoFlora <- 
+  InfoFlora %>% 
+  mutate(name = `Nom du taxon`,
+         family = Famille)
+
+InfoFlora_gbif <- 
+  name_backbone_checklist(InfoFlora)
+
+InfoFlora_gbif <-
+  InfoFlora_gbif %>% 
+  select(phylum, class, order, family, genus, species) %>% 
+  distinct()
+
+```
+I complete the check-list with occurrence data from GBIF
+
+GBIF.org (25 September 2024) GBIF Occurrence Download  https://doi.org/10.15468/dl.8emdev
+
+```{r}
+Swiss_gbif <- read_tsv(here("Data", "0030105-240906103802322.csv"))
+
+Swiss_gbif <- 
+Swiss_gbif %>% 
+  select(phylum, class, order, family, genus, species, iucnRedListCategory, numberOfOccurrences) 
+
+Swiss_gbif <-  
+Swiss_gbif %>% 
+  group_by(genus) %>% 
+  filter(
+        !is.na(species) | all(is.na(species))
+      ) %>% 
+  group_by(phylum, class, order, family, genus, species) %>% 
+  reframe(iucnRedListCategory = unique(iucnRedListCategory[!is.na(iucnRedListCategory)]),
+            numberOfOccurrences = sum(numberOfOccurrences)) %>% 
+  mutate(inGbif = TRUE) %>% 
+  group_by(genus, species) %>% 
+  mutate(iucnRedListCategory = case_when(n() > 1 ~ NA_character_, 
+                                         TRUE ~ iucnRedListCategory)) %>% 
+  distinct()
+
+Swiss_gbif %>% 
+  group_by(species) %>% 
+  filter(n() > 1) %>% 
+  filter(!is.na(species))
+
+#InfoFlora_gbif <- 
+InfoFlora_gbif %>% full_join(Swiss_gbif)
+
+write_tsv(InfoFlora_gbif, here("Data", "InfoFlora_gbif.txt"))
+```
+
+
+```{r}
+
+PlantITS_tax_gbif_out <- read_tsv(here("Data", "PLANiTS_29-03-2020", "PlantITS_tax_gbif.txt"))
+
+species_venn_df <- 
+  Unite_tax_gbif_out %>% 
+  filter(kingdom == "Plantae") %>% 
+  select(species) %>% 
+  mutate(DB = "Unite") %>% 
+  bind_rows(.,tibble(species = PlantITS_tax_gbif_out$species, DB = "plantITS")) %>% 
+  bind_rows(.,tibble(species = InfoFlora_gbif$species, DB = "InfoFlora")) %>% 
+  bind_rows(.,tibble(species = Beaver_plants_gbif$species, DB = "Beaver")) %>% 
+  filter(!is.na(species)) %>% 
+  distinct() %>%
+  mutate(species2 = species) %>% 
+  pivot_wider(names_from = DB, values_from = species2) %>% 
+  mutate_at(-1, ~!is.na(.)) 
+
+species_venn <- 
+  species_venn_df %>% 
+  filter(InfoFlora | Beaver) %>% 
+  select(-InfoFlora) %>% 
+  select(-species) %>% 
+  euler(shape = "ellipse") 
+
+plot(species_venn, legend = TRUE, quantities = TRUE)
+```
+
+```{r}
+species_venn$original.values
+```
+There are 30 species in the beaver dataset which are not in either Unite nor plantITS refDB
+
+There are 4 species which are only in plantITS
+
+```{r}
+genus_venn <- 
+  Unite_tax_gbif_out %>% 
+  filter(kingdom == "Plantae") %>% 
+  select(genus) %>% 
+  mutate(DB = "Unite") %>% 
+  bind_rows(.,tibble(genus = PlantITS_tax_gbif_out$genus, DB = "plantITS")) %>% 
+  bind_rows(.,tibble(genus = InfoFlora_gbif$genus, DB = "InfoFlora")) %>% 
+  bind_rows(.,tibble(genus = Beaver_plants_gbif$genus, DB = "Beaver")) %>% 
+  filter(!is.na(genus)) %>% 
+  distinct() %>% 
+  mutate(genus2 = genus) %>% 
+  pivot_wider(names_from = DB, values_from = genus2) %>% 
+  mutate_at(-1, ~!is.na(.)) %>% 
+  select(-genus) %>% 
+ # filter(InfoFlora | Beaver) %>% 
+  euler(shape = "ellipse") 
+
+plot(genus_venn, legend = TRUE, quantities = TRUE)
+```
+
+```{r}
+genus_venn$original.values %>% `[`(grepl("Beaver", names(.)))
+```
+all genera are in refDB, 3 only in PlantITS

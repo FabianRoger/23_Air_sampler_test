@@ -1,0 +1,569 @@
+seq	kingdom	phylum	class	order	family	genus	species
+seq_0001	Plantae	Tracheophyta	Magnoliopsida	Rosales	Urticaceae	Urtica	Urtica dioica
+seq_0002	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Plantago	Plantago sp.
+seq_0005	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Plantago	Plantago major
+seq_0006	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Trifolium	Trifolium sp.
+seq_0008	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Lolium	Lolium sp.
+seq_0009	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0010	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Filipendula	Filipendula ulmaria
+seq_0012	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Brassica	Brassica sp.
+seq_0014	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronica	Veronica persica
+seq_0015	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Festuca	Festuca rubra
+seq_0017	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Chenopodium	Chenopodium sp.
+seq_0018	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Medicago	Medicago sp.
+seq_0019	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Festuca	Festuca sp.
+seq_0022	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Alnus	Alnus sp.
+seq_0023	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Plantago	Plantago lanceolata
+seq_0026	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus sp.
+seq_0028	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Trifolium	Trifolium repens
+seq_0029	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Abies	Abies alba
+seq_0035	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Hypericaceae	Hypericum	Hypericum sp.
+seq_0037	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0040	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronica	Veronica sp.
+seq_0041	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Lythraceae	Lythrum	Lythrum salicaria
+seq_0042	Plantae	Tracheophyta	Magnoliopsida	Rosales	Cannabaceae	Cannabis	Cannabis sativa
+seq_0046	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Euphorbiaceae	Mercurialis	Mercurialis annua
+seq_0047	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Picea	Picea abies
+seq_0056	Plantae	Tracheophyta	Magnoliopsida	Fagales	Fagaceae	Fagus	Fagus sylvatica
+seq_0060	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Onobrychis	Onobrychis sp.
+seq_0065	Plantae	Tracheophyta	Magnoliopsida	Ericales	Balsaminaceae	Impatiens	Impatiens glandulifera
+seq_0066	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Holcus	Holcus sp.
+seq_0067	Plantae	Tracheophyta	Magnoliopsida	Solanales	Convolvulaceae	Convolvulus	Convolvulus arvensis
+seq_0069	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Hordeum	Hordeum vulgare
+seq_0073	Plantae	Tracheophyta	Magnoliopsida	Rosales	Cannabaceae	Humulus	Humulus lupulus
+seq_0078	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Triticum	Triticum aestivum
+seq_0079	Plantae	Tracheophyta	Magnoliopsida	Cucurbitales	Datiscaceae	Datisca	Datisca cannabina
+seq_0093	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Triticum	Triticum sp.
+seq_0100	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Poa	Poa sp.
+seq_0101	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Agrostis	Agrostis sp.
+seq_0108	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lathyrus	Lathyrus sp.
+seq_0109	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Vicia	Vicia lens
+seq_0111	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0113	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Poa	Poa pratensis
+seq_0126	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Amaranthus	Amaranthus sp.
+seq_0127	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lotus	Lotus pedunculatus
+seq_0128	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Elymus	Elymus repens
+seq_0134	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0140	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Arrhenatherum	Arrhenatherum elatius
+seq_0142	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Pinus	Pinus sp.
+seq_0145	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Taraxacum	Taraxacum sp.
+seq_0147	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Poa	Poa trivialis
+seq_0153	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Brassica	Brassica napus
+seq_0156	Plantae	Bryophyta	Bryopsida	Hypnales	Plagiotheciaceae	Herzogiella	Herzogiella seligeri
+seq_0157	Plantae	Tracheophyta	Magnoliopsida	Sapindales	Sapindaceae	Acer	Acer pseudoplatanus
+seq_0158	Plantae	Tracheophyta	Magnoliopsida	Apiales	Araliaceae	Hedera	Hedera helix
+seq_0163	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Onagraceae	Epilobium	Epilobium sp.
+seq_0165	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Daucus	Daucus carota
+seq_0172	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronica	Veronica filiformis
+seq_0179	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Ranunculus	Ranunculus acris
+seq_0180	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0189	Plantae	Marchantiophyta	Jungermanniopsida	Porellales	Lejeuneaceae	Leptolejeunea	Leptolejeunea radicosa
+seq_0201	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Taraxacum	Taraxacum latilobum
+seq_0202	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus vestitus
+seq_0204	Plantae	Tracheophyta	Magnoliopsida	Sapindales	Sapindaceae	Acer	Acer platanoides
+seq_0212	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Dactylis	Dactylis glomerata
+seq_0213	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0222	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rosa	Rosa multiflora
+seq_0226	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Glyceria	Glyceria notata
+seq_0229	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Vicia	Vicia sp.
+seq_0237	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Aconitum	Aconitum lycoctonum
+seq_0240	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Barbarea	Barbarea sp.
+seq_0244	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Taraxacum	Taraxacum officinale
+seq_0252	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Pinus	Pinus nigra
+seq_0256	Plantae	Tracheophyta	Magnoliopsida	Ericales	Primulaceae	Lysimachia	Lysimachia vulgaris
+seq_0259	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Crepis	Crepis sp.
+seq_0260	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Helianthus	Helianthus annuus
+seq_0262	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Alopecurus	Alopecurus pratensis
+seq_0264	Plantae	Tracheophyta	Magnoliopsida	Rosales	Urticaceae	Urtica	Urtica australis
+seq_0276	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0285	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Bromus	Bromus erectus
+seq_0288	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Medicago	Medicago lupulina
+seq_0296	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Trisetum	Trisetum flavescens
+seq_0297	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Geum	Geum sp.
+seq_0308	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Jacobaea	Jacobaea vulgaris
+seq_0313	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus idaeus
+seq_0319	Plantae	Tracheophyta	Magnoliopsida	Rosales	Urticaceae	Laportea	Laportea canadensis
+seq_0333	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Melilotus	Melilotus sp.
+seq_0342	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lotus	Lotus sp.
+seq_0347	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lotus	Lotus alpinus
+seq_0351	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Chenopodium	Chenopodium album
+seq_0352	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0358	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus subhirtella
+seq_0384	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Phalaris	Phalaris arundinacea
+seq_0387	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Avena	Avena sp.
+seq_0395	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Glycine	Glycine max
+seq_0397	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Glyceria	Glyceria fluitans
+seq_0401	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Oleaceae	Fraxinus	Fraxinus excelsior
+seq_0405	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_0419	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0437	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Lobularia	Lobularia maritima
+seq_0441	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Alopecurus	Alopecurus myosuroides
+seq_0453	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Lipandra	Lipandra polysperma
+seq_0460	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Plantago	Plantago media
+seq_0461	Plantae	Tracheophyta	Magnoliopsida	Fagales	Juglandaceae	Juglans	Juglans regia
+seq_0462	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Vicia	Vicia sepium
+seq_0464	Plantae	Tracheophyta	Magnoliopsida	Malvales	Malvaceae	Tilia	Tilia tomentosa
+seq_0474	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Sonchus	Sonchus asper
+seq_0498	Plantae	Tracheophyta	Magnoliopsida	Sapindales	Sapindaceae	Acer	Acer campestre
+seq_0504	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Eupatorium	Eupatorium cannabinum
+seq_0513	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Panicum	Panicum miliaceum
+seq_0525	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Potentilla	Potentilla sp.
+seq_0530	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Abies	Abies nordmanniana
+seq_0537	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Deschampsia	Deschampsia cespitosa
+seq_0539	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0548	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lathyrus	Lathyrus pratensis
+seq_0555	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Corylus	Corylus sp.
+seq_0565	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Styphnolobium	Styphnolobium japonicum
+seq_0574	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lathyrus	Lathyrus oleraceus
+seq_0588	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Betula	Betula pendula
+seq_0589	Plantae	Tracheophyta	Magnoliopsida	Rosales	Urticaceae	Urtica	Urtica sp.
+seq_0591	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Brassica	Brassica juncea
+seq_0622	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Phaseolus	Phaseolus vulgaris
+seq_0639	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0641	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Ranunculus	Ranunculus repens
+seq_0642	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Secale	Secale cereale
+seq_0644	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Lolium	Lolium rigidum
+seq_0660	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Angelica	Angelica sylvestris
+seq_0661	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Hypericaceae	Hypericum	Hypericum perforatum
+seq_0664	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	NA	NA
+seq_0682	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Geum	Geum rivale
+seq_0691	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Centaurea	Centaurea cyanus
+seq_0697	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Chenopodium	Chenopodium suecicum
+seq_0702	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0726	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Meum	Meum athamanticum
+seq_0748	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0753	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Centaurea	Centaurea scabiosa
+seq_0756	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_0777	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0780	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0782	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Atriplex	Atriplex patula
+seq_0794	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Cynosurus	Cynosurus cristatus
+seq_0802	Plantae	Tracheophyta	Magnoliopsida	Solanales	Convolvulaceae	Calystegia	Calystegia sp.
+seq_0808	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Beta	Beta vulgaris
+seq_0842	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0855	Plantae	Tracheophyta	Magnoliopsida	Dipsacales	Viburnaceae	Sambucus	Sambucus nigra
+seq_0858	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0859	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_0865	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Agrostis	Agrostis stolonifera
+seq_0896	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	Juniperus	Juniperus thurifera
+seq_0898	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Poa	Poa infirma
+seq_0899	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Sonchus	Sonchus sp.
+seq_0908	Plantae	Tracheophyta	Liliopsida	Liliales	Melanthiaceae	Veratrum	Veratrum album
+seq_0913	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Sinapis	Sinapis arvensis
+seq_0938	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Coronilla	Coronilla varia
+seq_0946	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Robinia	Robinia pseudoacacia
+seq_0964	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Symphytum	Symphytum officinale
+seq_0978	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Heracleum	Heracleum sphondylium
+seq_0993	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Setaria	Setaria pumila
+seq_0994	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Echium	Echium vulgare
+seq_1015	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Bromus	Bromus sp.
+seq_1019	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Hydrophyllaceae	Phacelia	Phacelia tanacetifolia
+seq_1058	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Camelina	Camelina sp.
+seq_1078	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Geum	Geum urbanum
+seq_1091	Plantae	Bryophyta	Bryopsida	Hypnales	Plagiotheciaceae	Plagiothecium	Plagiothecium sp.
+seq_1099	Plantae	Tracheophyta	Liliopsida	Poales	Juncaceae	Juncus	Juncus acutiflorus
+seq_1123	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Capsella	Capsella bursa-pastoris
+seq_1128	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Myosotis	Myosotis scorpioides
+seq_1152	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1204	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Phleum	Phleum sp.
+seq_1219	Plantae	Tracheophyta	Magnoliopsida	Cucurbitales	Cucurbitaceae	Cucumis	Cucumis sativus
+seq_1235	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Violaceae	Viola	Viola sp.
+seq_1254	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Triticum	Triticum monococcum
+seq_1305	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Carpinus	Carpinus betulus
+seq_1311	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Digitaria	Digitaria sp.
+seq_1312	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1326	Plantae	Tracheophyta	Magnoliopsida	Geraniales	Geraniaceae	Geranium	Geranium robertianum
+seq_1375	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1376	Plantae	Tracheophyta	Magnoliopsida	Cornales	Hydrangeaceae	Hydrangea	Hydrangea sp.
+seq_1383	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1390	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1396	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1419	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Erigeron	Erigeron annuus
+seq_1421	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Crepis	Crepis nicaeensis
+seq_1468	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus nigricans
+seq_1472	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Anthoxanthum	Anthoxanthum odoratum
+seq_1474	Plantae	Bryophyta	Bryopsida	Orthotrichales	Orthotrichaceae	Orthotrichum	Orthotrichum shevockii
+seq_1493	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Ranunculus	Ranunculus sp.
+seq_1495	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Orobanchaceae	Rhinanthus	Rhinanthus alectorolophus
+seq_1499	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lotus	Lotus tenuis
+seq_1527	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Linaceae	Linum	Linum sp.
+seq_1531	Plantae	Bryophyta	Bryopsida	Hypnales	Plagiotheciaceae	Plagiothecium	Plagiothecium curvifolium
+seq_1541	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1561	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1563	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Erigeron	Erigeron canadensis
+seq_1576	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Myosotis	Myosotis sp.
+seq_1580	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1605	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Lapsana	Lapsana communis
+seq_1638	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Taraxacum	Taraxacum maricum
+seq_1646	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Genista	Genista tinctoria
+seq_1657	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Violaceae	Viola	Viola hirta
+seq_1675	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Anthoxanthum	Anthoxanthum sp.
+seq_1687	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1701	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Solidago	Solidago sp.
+seq_1703	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Trifolium	Trifolium alexandrinum
+seq_1706	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Taraxacum	Taraxacum roseum
+seq_1709	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1717	Plantae	Tracheophyta	Magnoliopsida	Malvales	Malvaceae	Tilia	Tilia sp.
+seq_1729	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Leontodon	Leontodon hispidus
+seq_1733	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Amaranthus	Amaranthus blitum
+seq_1736	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Bromus	Bromus hordeaceus
+seq_1756	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1758	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus incanescens
+seq_1764	Plantae	Bryophyta	Bryopsida	Hypnales	Amblystegiaceae	NA	NA
+seq_1772	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1777	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus sp.
+seq_1778	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Plantago	Plantago reniformis
+seq_1782	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	NA	NA
+seq_1796	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1802	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Trifolium	Trifolium nigrescens
+seq_1841	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Poterium	Poterium sanguisorba
+seq_1866	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1950	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Galinsoga	Galinsoga sp.
+seq_1964	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_1990	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronica	Veronica chamaedrys
+seq_2027	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Crepis	Crepis biennis
+seq_2032	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2036	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Festuca	Festuca alpina
+seq_2056	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2065	Plantae	Tracheophyta	Liliopsida	Poales	Juncaceae	Juncus	Juncus articulatus
+seq_2111	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2112	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2118	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2122	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Hypericaceae	Hypericum	Hypericum maculatum
+seq_2126	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Picris	Picris hieracioides
+seq_2218	Plantae	Tracheophyta	Magnoliopsida	Gentianales	Rubiaceae	Galium	Galium mollugo
+seq_2224	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2232	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Crepis	Crepis neglecta
+seq_2235	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Onagraceae	Circaea	Circaea lutetiana
+seq_2252	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	Xanthocyparis	Xanthocyparis nootkatensis
+seq_2259	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Betula	Betula sp.
+seq_2287	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2299	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2327	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2329	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Bellis	Bellis perennis
+seq_2344	Plantae	Marchantiophyta	Jungermanniopsida	Porellales	Lejeuneaceae	Diplasiolejeunea	Diplasiolejeunea zakiae
+seq_2362	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Polygonaceae	Persicaria	Persicaria amphibia
+seq_2374	Plantae	Tracheophyta	Magnoliopsida	Cornales	Hydrangeaceae	Hydrangea	Hydrangea xanthoneura
+seq_2381	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Rorippa	Rorippa sylvestris
+seq_2382	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2394	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Pimpinella	Pimpinella saxifraga
+seq_2398	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2466	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2472	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Raphanus	Raphanus sativus
+seq_2477	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2503	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Avenula	Avenula pubescens
+seq_2510	Plantae	Tracheophyta	Magnoliopsida	Cornales	Hydrangeaceae	Hydrangea	Hydrangea longipes
+seq_2513	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Centaurea	Centaurea sp.
+seq_2535	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2569	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Brassica	Brassica oleracea
+seq_2571	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2624	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2644	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2671	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2686	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2688	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2705	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_2722	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2740	Plantae	Tracheophyta	Magnoliopsida	Rosales	Urticaceae	Parietaria	Parietaria sp.
+seq_2784	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus domestica
+seq_2794	Plantae	Tracheophyta	Magnoliopsida	Rosales	Elaeagnaceae	Hippophae	Hippophae rhamnoides
+seq_2796	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Raphanus	Raphanus sp.
+seq_2833	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Cirsium	Cirsium arvense
+seq_2855	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Pinus	Pinus strobus
+seq_2860	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2869	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2872	Plantae	Tracheophyta	Pinopsida	Pinales	Taxaceae	Taxus	Taxus baccata
+seq_2879	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Picea	Picea sp.
+seq_2891	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2893	Plantae	Tracheophyta	Magnoliopsida	Fagales	Fagaceae	Quercus	Quercus robur
+seq_2897	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2909	Plantae	Tracheophyta	Liliopsida	Poales	Cyperaceae	Carex	Carex brizoides
+seq_2912	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Vicia	Vicia faba
+seq_2924	Plantae	Tracheophyta	Magnoliopsida	Dipsacales	Viburnaceae	Viburnum	Viburnum opulus
+seq_2942	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_2944	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2964	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2970	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2980	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_2983	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3008	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Cirsium	Cirsium oleraceum
+seq_3037	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3039	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Capsella	Capsella sp.
+seq_3047	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3049	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3084	Plantae	Marchantiophyta	Jungermanniopsida	Porellales	Lejeuneaceae	Leptolejeunea	Leptolejeunea maculata
+seq_3104	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3136	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	Juniperus	Juniperus communis
+seq_3151	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3163	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3172	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus bifrons
+seq_3187	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Alchemilla	Alchemilla sp.
+seq_3211	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3244	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Onagraceae	Epilobium	Epilobium montanum
+seq_3280	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Achillea	Achillea sp.
+seq_3307	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3356	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3365	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Corylus	Corylus avellana
+seq_3380	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3404	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Alchemilla	Alchemilla xanthochlora
+seq_3420	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3455	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Holcus	Holcus mollis
+seq_3456	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3475	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Atriplex	Atriplex rosea
+seq_3484	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Borago	Borago officinalis
+seq_3488	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3513	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Ammi	Ammi majus
+seq_3573	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3578	Plantae	Tracheophyta	Magnoliopsida	Sapindales	Sapindaceae	Acer	Acer monspessulanum
+seq_3581	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3585	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Artemisia	Artemisia vulgaris
+seq_3597	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3631	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Wisteria	Wisteria sinensis
+seq_3649	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3659	Plantae	Tracheophyta	Magnoliopsida	Proteales	Platanaceae	Platanus	Platanus sp.
+seq_3679	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Hordeum	Hordeum murinum
+seq_3694	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3744	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3757	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3790	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3840	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3841	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3854	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3899	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Caryophyllaceae	Sagina	Sagina procumbens
+seq_3907	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3909	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3914	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3928	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Achillea	Achillea setacea
+seq_3952	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3964	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3965	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3970	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_3984	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_3994	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4060	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Setaria	Setaria sp.
+seq_4074	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4075	Plantae	Tracheophyta	Magnoliopsida	Malvales	Malvaceae	Althaea	Althaea officinalis
+seq_4092	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4103	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Solidago	Solidago canadensis
+seq_4108	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Lolium	Lolium temulentum
+seq_4111	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rosa	Rosa gallica
+seq_4131	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4162	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4167	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Alliaria	Alliaria petiolata
+seq_4178	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4208	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Lolium	Lolium multiflorum
+seq_4253	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4333	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Pastinaca	Pastinaca sativa
+seq_4398	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_4403	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus padus
+seq_4424	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4431	Plantae	Tracheophyta	Magnoliopsida	Fagales	Fagaceae	Quercus	Quercus sp.
+seq_4455	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Laserpitium	Laserpitium latifolium
+seq_4462	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4476	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4521	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Achillea	Achillea millefolium
+seq_4537	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4556	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4564	Plantae	Tracheophyta	Liliopsida	Asparagales	Amaryllidaceae	Allium	Allium ampeloprasum
+seq_4603	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4605	Plantae	Tracheophyta	Magnoliopsida	Saxifragales	Crassulaceae	Hylotelephium	Hylotelephium telephium
+seq_4623	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Caryophyllaceae	Stellaria	Stellaria media
+seq_4626	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Hypochaeris	Hypochaeris radicata
+seq_4665	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Centaurea	Centaurea jacea
+seq_4693	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4702	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Galega	Galega officinalis
+seq_4717	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Papaveraceae	Papaver	Papaver rhoeas
+seq_4719	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Mycelis	Mycelis muralis
+seq_4723	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Aegopodium	Aegopodium podagraria
+seq_4733	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4749	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4751	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4793	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4808	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4834	Plantae	Bryophyta	Bryopsida	Hypnales	Scorpidiaceae	Sanionia	Sanionia sp.
+seq_4877	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	NA	NA
+seq_4879	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_4959	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rosa	Rosa rugosa
+seq_4996	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Scrophulariaceae	Scrophularia	Scrophularia nodosa
+seq_5026	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Panicum	Panicum virgatum
+seq_5050	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Onobrychis	Onobrychis montana
+seq_5060	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5072	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Cicer	Cicer arietinum
+seq_5091	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Alopecurus	Alopecurus sp.
+seq_5121	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Lotus	Lotus corniculatus
+seq_5166	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5198	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Rubus	Rubus foliosus
+seq_5200	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Torilis	Torilis japonica
+seq_5209	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5236	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5248	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5271	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5284	Plantae	Tracheophyta	Magnoliopsida	Dipsacales	Viburnaceae	Sambucus	Sambucus racemosa
+seq_5286	Plantae	Tracheophyta	Magnoliopsida	Ericales	Balsaminaceae	Impatiens	Impatiens parviflora
+seq_5296	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5333	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Melilotus	Melilotus albus
+seq_5334	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Berula	Berula erecta
+seq_5356	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Triticum	Triticum turgidum
+seq_5374	Plantae	Tracheophyta	Magnoliopsida	Sapindales	Anacardiaceae	Rhus	Rhus typhina
+seq_5385	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Cirsium	Cirsium sp.
+seq_5410	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	Thuja	Thuja occidentalis
+seq_5417	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5430	Plantae	Tracheophyta	Magnoliopsida	Gentianales	Rubiaceae	Galium	Galium sylvaticum
+seq_5443	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Cirsium	Cirsium vulgare
+seq_5472	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5502	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Calamagrostis	Calamagrostis pseudophragmites
+seq_5513	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Nardus	Nardus stricta
+seq_5579	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5604	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5624	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5735	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Matricaria	Matricaria chamomilla
+seq_5739	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Polygonaceae	Rumex	Rumex thyrsiflorus
+seq_5750	Plantae	Tracheophyta	Magnoliopsida	Malvales	Malvaceae	Hibiscus	Hibiscus syriacus
+seq_5759	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5788	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5796	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5812	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	NA	NA
+seq_5818	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5822	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5826	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5844	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Melilotus	Melilotus altissimus
+seq_5853	Plantae	Tracheophyta	Magnoliopsida	Geraniales	Geraniaceae	Geranium	Geranium endressii
+seq_5903	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5937	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5957	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Clematis	Clematis vitalba
+seq_5969	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5985	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5987	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_5996	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Pinus	Pinus massoniana
+seq_6058	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	Cupressus	Cupressus sp.
+seq_6059	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Cardamine	Cardamine flexuosa
+seq_6065	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Chenopodium	Chenopodium ficifolium
+seq_6088	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Potentilla	Potentilla indica
+seq_6099	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6128	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6134	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Orobanchaceae	Orthocarpus	Orthocarpus luteus
+seq_6142	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6166	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Digitalis	Digitalis purpurea
+seq_6175	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Euphorbiaceae	Euphorbia	Euphorbia stricta
+seq_6176	Plantae	Tracheophyta	Magnoliopsida	Malvales	Malvaceae	Tilia	Tilia platyphyllos
+seq_6206	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Pulmonaria	Pulmonaria officinalis
+seq_6210	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Solidago	Solidago gigantea
+seq_6233	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus avium
+seq_6248	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6250	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6256	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6276	Plantae	Tracheophyta	Magnoliopsida	Malvales	Malvaceae	Tilia	Tilia cordata
+seq_6283	Plantae	Marchantiophyta	Marchantiopsida	Marchantiales	Marchantiaceae	Marchantia	Marchantia quadrata
+seq_6289	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Anethum	Anethum graveolens
+seq_6302	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Myrtaceae	Myrtus	Myrtus communis
+seq_6310	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronicastrum	Veronicastrum sp.
+seq_6336	Plantae	Tracheophyta	Magnoliopsida	Cornales	Hydrangeaceae	Hydrangea	Hydrangea arborescens
+seq_6380	Plantae	Tracheophyta	Pinopsida	Pinales	Cupressaceae	Juniperus	Juniperus sabina
+seq_6381	Plantae	Tracheophyta	Magnoliopsida	Geraniales	Geraniaceae	Geranium	Geranium pyrenaicum
+seq_6471	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Agrostis	Agrostis gigantea
+seq_6512	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6514	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6553	Plantae	Tracheophyta	Liliopsida	Poales	Cyperaceae	Scirpus	Scirpus sylvaticus
+seq_6573	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Cardamine	Cardamine sp.
+seq_6576	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Coriandrum	Coriandrum sativum
+seq_6660	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6676	Plantae	Bryophyta	Polytrichopsida	Polytrichales	Polytrichaceae	Atrichum	Atrichum angustatum
+seq_6680	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Pinus	Pinus mugo
+seq_6691	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6733	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6756	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Caryophyllaceae	Stellaria	Stellaria graminea
+seq_6758	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Avena	Avena barbata
+seq_6759	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Petroselinum	Petroselinum crispum
+seq_6767	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Picea	Picea engelmannii
+seq_6775	Plantae	Tracheophyta	Magnoliopsida	Cornales	Hydrangeaceae	Hydrangea	Hydrangea paniculata
+seq_6828	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Centaurea	Centaurea montana
+seq_6831	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Panicum	Panicum sp.
+seq_6869	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Argentina	Argentina anserina
+seq_6882	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_6901	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Caryophyllaceae	Cerastium	Cerastium sp.
+seq_6919	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Eragrostis	Eragrostis sp.
+seq_6936	Plantae	Tracheophyta	Magnoliopsida	Saxifragales	Crassulaceae	Petrosedum	Petrosedum amplexicaule
+seq_6960	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronica	Veronica serpyllifolia
+seq_6974	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Panicum	Panicum capillare
+seq_7000	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7019	Plantae	Tracheophyta	Magnoliopsida	Geraniales	Geraniaceae	Geranium	Geranium sylvaticum
+seq_7036	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7059	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Polygonaceae	Rumex	Rumex acetosa
+seq_7060	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Onagraceae	Circaea	Circaea sp.
+seq_7078	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Orobanchaceae	Orobanche	Orobanche minor
+seq_7084	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7090	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Sanguisorba	Sanguisorba officinalis
+seq_7109	Plantae	Tracheophyta	NA	NA	NA	NA	NA
+seq_7116	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Cichorium	Cichorium intybus
+seq_7120	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7123	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Dasiphora	Dasiphora fruticosa
+seq_7131	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Salicaceae	Salix	Salix sp.
+seq_7151	Plantae	Bryophyta	Bryopsida	Hypnales	Brachytheciaceae	Rhynchostegium	Rhynchostegium murale
+seq_7179	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Potentilla	Potentilla sterilis
+seq_7186	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Sonchus	Sonchus arvensis
+seq_7198	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Ranunculus	Ranunculus polyanthemos
+seq_7212	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Festuca	Festuca magellanica
+seq_7226	Plantae	Bryophyta	Bryopsida	Hypnales	Scorpidiaceae	Sanionia	Sanionia uncinata
+seq_7258	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Amaranthaceae	Salsola	Salsola tragus
+seq_7271	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Hypericaceae	Hypericum	Hypericum tetrapterum
+seq_7279	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7281	Plantae	Tracheophyta	Magnoliopsida	Fagales	Betulaceae	Betula	Betula pubescens
+seq_7304	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Tamaricaceae	Tamarix	Tamarix sp.
+seq_7330	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7338	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7349	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Tragopogon	Tragopogon sp.
+seq_7350	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Carum	Carum carvi
+seq_7371	Plantae	Bryophyta	Bryopsida	Hypnales	Amblystegiaceae	NA	NA
+seq_7386	Plantae	Tracheophyta	NA	NA	NA	NA	NA
+seq_7395	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Agrostis	Agrostis canina
+seq_7405	Plantae	Bryophyta	Bryopsida	Hypnales	Amblystegiaceae	Campylophyllopsis	Campylophyllopsis calcarea
+seq_7415	Plantae	Bryophyta	Polytrichopsida	Tetraphidales	Tetraphidaceae	Tetraphis	Tetraphis pellucida
+seq_7421	Plantae	Tracheophyta	Magnoliopsida	Malpighiales	Hypericaceae	Hypericum	Hypericum calycinum
+seq_7436	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Orobanchaceae	Euphrasia	Euphrasia sp.
+seq_7439	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus mahaleb
+seq_7442	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Eriocapitella	Eriocapitella hupehensis
+seq_7449	Plantae	Tracheophyta	Magnoliopsida	Rosales	Urticaceae	Parietaria	Parietaria judaica
+seq_7465	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Prunus	Prunus cerasifera
+seq_7473	Plantae	Tracheophyta	Liliopsida	Poales	Juncaceae	Juncus	Juncus sp.
+seq_7479	Plantae	Tracheophyta	Magnoliopsida	Ericales	Primulaceae	Lysimachia	Lysimachia arvensis
+seq_7485	Plantae	Tracheophyta	NA	NA	NA	NA	NA
+seq_7492	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Fragaria	Fragaria ananassa
+seq_7518	Plantae	Bryophyta	Bryopsida	Hypnales	Amblystegiaceae	NA	NA
+seq_7520	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	Brassica	Brassica nigra
+seq_7522	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7550	Plantae	Tracheophyta	NA	NA	NA	NA	NA
+seq_7552	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7554	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Agrostis	Agrostis vinealis
+seq_7559	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Chaerophyllum	Chaerophyllum sp.
+seq_7567	Plantae	Tracheophyta	Magnoliopsida	Caryophyllales	Caryophyllaceae	Moehringia	Moehringia trinervia
+seq_7576	Plantae	Tracheophyta	Liliopsida	Poales	Cyperaceae	Carex	Carex remota
+seq_7587	Plantae	Tracheophyta	Liliopsida	Poales	Cyperaceae	Eleocharis	Eleocharis mamillata
+seq_7597	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Bromus	Bromus racemosus
+seq_7600	Plantae	Tracheophyta	Magnoliopsida	Rosales	Rosaceae	Alchemilla	Alchemilla glabra
+seq_7616	Plantae	Tracheophyta	NA	NA	NA	NA	NA
+seq_7627	Plantae	Tracheophyta	Magnoliopsida	Saxifragales	Haloragaceae	Myriophyllum	Myriophyllum spicatum
+seq_7631	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Caltha	Caltha palustris
+seq_7645	Plantae	Marchantiophyta	Jungermanniopsida	Porellales	Lejeuneaceae	Microlejeunea	Microlejeunea capillaris
+seq_7662	Plantae	Bryophyta	Bryopsida	Hypnales	Amblystegiaceae	NA	NA
+seq_7665	Plantae	Tracheophyta	Magnoliopsida	Asterales	Asteraceae	Leucanthemum	Leucanthemum sp.
+seq_7669	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7677	Plantae	Tracheophyta	Magnoliopsida	Ericales	Ericaceae	Calluna	Calluna vulgaris
+seq_7688	Plantae	Tracheophyta	Magnoliopsida	Brassicales	Brassicaceae	NA	NA
+seq_7694	Plantae	Tracheophyta	NA	NA	NA	NA	NA
+seq_7702	Plantae	Tracheophyta	Magnoliopsida	Ranunculales	Ranunculaceae	Anemone	Anemone nemorosa
+seq_7705	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Trigonella	Trigonella foenum-graecum
+seq_7708	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Aethusa	Aethusa cynapium
+seq_7710	Plantae	Tracheophyta	Magnoliopsida	Ericales	Primulaceae	Lysimachia	Lysimachia nummularia
+seq_7711	Plantae	Tracheophyta	Pinopsida	Pinales	Pinaceae	Larix	Larix sp.
+seq_7715	Plantae	Tracheophyta	Magnoliopsida	NA	NA	NA	NA
+seq_7719	Plantae	Tracheophyta	Magnoliopsida	Gentianales	Rubiaceae	Galium	Galium album
+seq_7725	Plantae	Tracheophyta	Magnoliopsida	Saxifragales	Saxifragaceae	Heuchera	Heuchera sp.
+seq_7726	Plantae	Bryophyta	Bryopsida	Bryales	Bryaceae	Gemmabryum	Gemmabryum sauteri
+seq_7729	Plantae	Tracheophyta	Magnoliopsida	Fabales	Fabaceae	Trifolium	Trifolium micranthum
+seq_7732	Plantae	Tracheophyta	Magnoliopsida	Apiales	Apiaceae	Cnidiocarpa	Cnidiocarpa alaica
+seq_7761	Plantae	Tracheophyta	Magnoliopsida	Boraginales	Boraginaceae	Myosotis	Myosotis laxa
+seq_7762	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Plantaginaceae	Veronicastrum	Veronicastrum virginicum
+seq_7793	Plantae	Tracheophyta	Magnoliopsida	NA	NA	NA	NA
+seq_7815	Plantae	Bryophyta	Bryopsida	Dicranales	Leucobryaceae	Pilopogon	Pilopogon laevis
+seq_7816	Plantae	Tracheophyta	Magnoliopsida	Lamiales	Lamiaceae	Origanum	Origanum sp.
+seq_7840	Plantae	Tracheophyta	Liliopsida	Poales	Poaceae	Agrostis	Agrostis capillaris

@@ -1,0 +1,29 @@
+/Applications/bbmap//calcmem.sh: line 75: [: -v: unary operator expected
+Max memory cannot be determined.  Attempting to use 1400 MB.
+If this fails, please add the -Xmx flag (e.g. -Xmx24g) to your command, 
+or run this program qsubbed or from a qlogin session on Genepool, or set ulimit to an appropriate value.
+java -ea -Xmx1400m -Xms1400m -cp /Applications/bbmap/current/ jgi.BBDuk in1=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/343961_137-NGS_UDP0137_R1.fastq.gz in2=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/343961_137-NGS_UDP0137_R2.fastq.gz out=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/filtered/343961_137-NGS_UDP0137_R1.fastq.gz out2=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/filtered/343961_137-NGS_UDP0137_R2.fastq.gz maxns=0 ref=/Applications/bbmap/resources/phix174_ill.ref.fa.gz k=20 hdist=2 threads=8
+Executing jgi.BBDuk [in1=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/343961_137-NGS_UDP0137_R1.fastq.gz, in2=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/343961_137-NGS_UDP0137_R2.fastq.gz, out=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/filtered/343961_137-NGS_UDP0137_R1.fastq.gz, out2=/Volumes/B_physalus/23_Air_sampler_test/Sequencing_data/o34396_Aviti_2023-10-22_AV009/filtered/343961_137-NGS_UDP0137_R2.fastq.gz, maxns=0, ref=/Applications/bbmap/resources/phix174_ill.ref.fa.gz, k=20, hdist=2, threads=8]
+Version 39.01
+
+Set threads to 8
+0.020 seconds.
+Initial:
+Memory: max=1407m, total=1407m, free=1375m, used=32m
+
+Added 8569899 kmers; time: 	1.121 seconds.
+Memory: max=1407m, total=1407m, free=1162m, used=245m
+
+Input is being processed as paired
+Started output streams:	0.171 seconds.
+Processing time:   		17.395 seconds.
+
+Input:                  	3382812 reads 		1018226412 bases.
+Contaminants:           	14610 reads (0.43%) 	4397610 bases (0.43%)
+Low quality discards:   	489566 reads (14.47%) 	147359366 bases (14.47%)
+Total Removed:          	504176 reads (14.90%) 	151756976 bases (14.90%)
+Result:                 	2878636 reads (85.10%) 	866469436 bases (85.10%)
+
+Time:                         	18.691 seconds.
+Reads Processed:       3382k 	180.99k reads/sec
+Bases Processed:       1018m 	54.48m bases/sec
