@@ -1,0 +1,62 @@
+# =============================================
+# .claudeignore for 23_Air_sampler_test
+# =============================================
+# Prevent Claude from reading large binary files,
+# reference databases, and sequencing data that
+# would waste context window tokens.
+# =============================================
+
+# --- Sequence files (all formats) ---
+*.fasta
+*.fa
+*.fq
+*.fastq
+*.fastq.gz
+*.fq.gz
+*.bam
+*.sam
+*.udb
+
+# --- Reference databases (GBIF, BOLD, MIDORI, UNITE, PLANiTS) ---
+# Fungi
+Data/Fungi/in_files/Unite_*
+Data/Fungi/in_files/sh_*
+
+# Insects
+Data/Insects/in_files/MIDORI*
+Data/Insects/in_files/Bold_gbif*
+Data/Insects/in_files/Midori_gbif*
+
+# Plants
+Data/Plants/in_files/Plant_ITS_db/
+Data/Plants/in_files/Unite_*
+
+# Vertebrates
+Data/Vertebrates/in_files/MIDORI*
+Data/Vertebrates/in_files/Midori_lr_*
+
+# Bacteria
+Data/Bacteria/in_files/trainset19_072023.rdp/
+
+# --- Demultiplexed and filtered reads ---
+Data/*/demultiplexed/
+Data/*/filtered/
+
+# --- Intermediate processing outputs ---
+Data/*/out_intermediate/
+
+# --- Sequencing data ---
+Sequencing_data/
+
+# --- Raw data from upstream directory ---
+*.rds
+
+# --- Generated outputs ---
+Figures/
+*.html
+*.nb.html
+*_cache/
+
+# --- OS / IDE ---
+.Rproj.user/
+.DS_Store

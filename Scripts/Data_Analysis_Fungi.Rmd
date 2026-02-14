@@ -503,14 +503,10 @@ cont_summary <-
          total_reads_field, n_OTUs_lab, n_ratio_gt1_lab)
 ```
 
-Create derived data directory if needed and export.
+Export contamination summary to intermediate output folder.
 
 ```{r}
-if(!dir.exists(here("Data", "derived"))) {
-  dir.create(here("Data", "derived"))
-}
-
-write_tsv(cont_summary, here("Data", "derived", "Fungi_contamination.tsv"))
+write_tsv(cont_summary, here("Data", "Fungi", "out_intermediate", "Fungi_contamination.tsv"))
 ```
 
 ## Exclude contaminants
@@ -826,7 +822,7 @@ S_df %>%
 Export richness for cross-group figures.
 
 ```{r}
-write_tsv(S_df, here("Data", "derived", "Fungi_richness.tsv"))
+write_tsv(S_df, here("Data", "Fungi", "out_intermediate", "Fungi_richness.tsv"))
 ```
 
 # Faith's phylogenetic diversity
@@ -869,7 +865,7 @@ if(exists("Fungi_tree")) {
     labs(x = "Duration", y = "Faith's PD")
 
   # Export updated richness with PD
-  write_tsv(S_df, here("Data", "derived", "Fungi_richness.tsv"))
+  write_tsv(S_df, here("Data", "Fungi", "out_intermediate", "Fungi_richness.tsv"))
 
 } else {
   message("Phylogenetic tree not available. Skipping Faith's PD analysis.")
@@ -968,7 +964,7 @@ completeness_df %>%
 Export completeness data.
 
 ```{r}
-write_tsv(completeness_df, here("Data", "derived", "Fungi_completeness.tsv"))
+write_tsv(completeness_df, here("Data", "Fungi", "out_intermediate", "Fungi_completeness.tsv"))
 ```
 
 # Richness correlation across sites
@@ -1168,7 +1164,7 @@ beta_summary %>%
 Export betapart results.
 
 ```{r}
-write_tsv(beta_summary, here("Data", "derived", "Fungi_nestedness_turnover.tsv"))
+write_tsv(beta_summary, here("Data", "Fungi", "out_intermediate", "Fungi_nestedness_turnover.tsv"))
 ```
 
 # Rank-abundance correlation
@@ -1264,7 +1260,7 @@ rank_cor_mat %>%
 Export rank correlation results.
 
 ```{r}
-write_tsv(rank_cor_summary, here("Data", "derived", "Fungi_rank_correlation.tsv"))
+write_tsv(rank_cor_summary, here("Data", "Fungi", "out_intermediate", "Fungi_rank_correlation.tsv"))
 ```
 
 # Venn diagram
@@ -1402,28 +1398,28 @@ Ensure all required exports are written.
 
 ```{r}
 # Richness (already exported above)
-if(!file.exists(here("Data", "derived", "Fungi_richness.tsv"))) {
-  write_tsv(S_df, here("Data", "derived", "Fungi_richness.tsv"))
+if(!file.exists(here("Data", "Fungi", "out_intermediate", "Fungi_richness.tsv"))) {
+  write_tsv(S_df, here("Data", "Fungi", "out_intermediate", "Fungi_richness.tsv"))
 }
 
 # Contamination (already exported above)
-if(!file.exists(here("Data", "derived", "Fungi_contamination.tsv"))) {
-  write_tsv(cont_summary, here("Data", "derived", "Fungi_contamination.tsv"))
+if(!file.exists(here("Data", "Fungi", "out_intermediate", "Fungi_contamination.tsv"))) {
+  write_tsv(cont_summary, here("Data", "Fungi", "out_intermediate", "Fungi_contamination.tsv"))
 }
 
 # Completeness (already exported above)
-if(!file.exists(here("Data", "derived", "Fungi_completeness.tsv"))) {
-  write_tsv(completeness_df, here("Data", "derived", "Fungi_completeness.tsv"))
+if(!file.exists(here("Data", "Fungi", "out_intermediate", "Fungi_completeness.tsv"))) {
+  write_tsv(completeness_df, here("Data", "Fungi", "out_intermediate", "Fungi_completeness.tsv"))
 }
 
 # Nestedness/turnover (already exported above)
-if(!file.exists(here("Data", "derived", "Fungi_nestedness_turnover.tsv"))) {
-  write_tsv(beta_summary, here("Data", "derived", "Fungi_nestedness_turnover.tsv"))
+if(!file.exists(here("Data", "Fungi", "out_intermediate", "Fungi_nestedness_turnover.tsv"))) {
+  write_tsv(beta_summary, here("Data", "Fungi", "out_intermediate", "Fungi_nestedness_turnover.tsv"))
 }
 
 # Rank correlation (already exported above)
-if(!file.exists(here("Data", "derived", "Fungi_rank_correlation.tsv"))) {
-  write_tsv(rank_cor_summary, here("Data", "derived", "Fungi_rank_correlation.tsv"))
+if(!file.exists(here("Data", "Fungi", "out_intermediate", "Fungi_rank_correlation.tsv"))) {
+  write_tsv(rank_cor_summary, here("Data", "Fungi", "out_intermediate", "Fungi_rank_correlation.tsv"))
 }
 ```
 
