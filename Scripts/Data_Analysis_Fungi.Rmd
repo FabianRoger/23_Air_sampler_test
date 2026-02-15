@@ -971,65 +971,6 @@ completeness_df %>%
   ylim(0, 1)
 ```
 
-Estimate asymptotic richness per site using coverage-based estimation (pooled across all samplers). Use `nboot = 0` to skip confidence intervals for speed. Coverage-based is more principled than size-based (Chao1) for completeness calculations.
-
-```{r}
-# Build site abundance vectors (pooled across all samplers per site)
-site_abundance_list <-
-  Fungi_ASV_clean_long %>%
-  left_join(Meta) %>%
-  filter(Sampler != "Drone") %>%
-  group_by(Sites, seq) %>%
-  summarise(reads = sum(reads), .groups = "drop") %>%
-  filter(reads > 0) %>%
-  group_by(Sites) %>%
-  group_split()
-
-names(site_abundance_list) <- map_chr(site_abundance_list, ~unique(.x$Sites))
-
-site_vectors <- map(site_abundance_list, ~{
-  v <- .x$reads
-  names(v) <- .x$seq
-  v
-})
-
-# Coverage-based estimation at 95% coverage (nboot = 0 for speed)
-inext_estimates <-
-  map_df(names(site_vectors), function(site) {
-    est <- estimateD(site_vectors[[site]],
-                     datatype = "abundance",
-                     base = "coverage",
-                     level = 0.95,
-                     nboot = 0) %>%
-      filter(Order.q == 0)
-    tibble(
-      Sites = site,
-      S_estimated = est$qD
-    )
-  })
-```
-
-Compute completeness relative to estimated richness.
-
-```{r}
-completeness_df <-
-  completeness_df %>%
-  left_join(inext_estimates, by = "Sites") %>%
-  mutate(fraction_of_estimated = S_sampler / S_estimated)
-```
-
-Plot observed vs estimated richness.
-
-```{r}
-completeness_df %>%
-  ggplot(aes(x = Sampler, y = fraction_of_estimated, fill = duration)) +
-  geom_boxplot() +
-  coord_flip() +
-  theme_minimal() +
-  labs(x = "Sampler", y = "Fraction of estimated site richness", fill = "Duration") +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "red")
-```
-
 Export completeness data.
 
 ```{r}
