@@ -1,0 +1,152 @@
+Plate	row	col	Sample_names	Sites	Sampler	duration	Type	Index
+Plate_1	A	1	1DC30	Duebendorf	Coriolis	30 min	active	NGS_UDP0001
+Plate_1	A	2	1DC5	Duebendorf	Coriolis	5 hours	active	NGS_UDP0002
+Plate_1	A	3	4HCcontrol	Haslibach	Coriolis	NA	field_control	NGS_UDP0003
+Plate_1	A	4	7WE30	Weierbach	Electrostatic	30 min	active	NGS_UDP0004
+Plate_1	A	5	6GE5	Gaebelbach	Electrostatic	5 hours	active	NGS_UDP0005
+Plate_1	A	6	4HB30	Haslibach	Burkhart	30 min	active	NGS_UDP0006
+Plate_1	A	7	3CB5	Coruz	Burkhart	5 hours	active	NGS_UDP0007
+Plate_1	A	8	7WBcontrol	Weierbach	Burkhart	NA	field_control	NGS_UDP0008
+Plate_1	A	9	9RM2	Riedgraben	MWAC	2 weeks	passive	NGS_UDP0009
+Plate_1	A	10	3CD3	Coruz	Drone	10 min	active	NGS_UDP0010
+Plate_1	A	11	1DS30	Duebendorf	Sass	30 min	active	NGS_UDP0011
+Plate_1	A	12	8RS30	Riedgraben	Sass	30 min	active	NGS_UDP0012
+Plate_1	B	1	2TC30	Talent	Coriolis	30 min	active	NGS_UDP0013
+Plate_1	B	2	2TC5	Talent	Coriolis	5 hours	active	NGS_UDP0014
+Plate_1	B	3	7WCcontrol	Weierbach	Coriolis	NA	field_control	NGS_UDP0015
+Plate_1	B	4	8RE30	Riedgraben	Electrostatic	30 min	active	NGS_UDP0016
+Plate_1	B	5	7WE5	Weierbach	Electrostatic	5 hours	active	NGS_UDP0017
+Plate_1	B	6	5LB30	Leugene	Burkhart	30 min	active	NGS_UDP0018
+Plate_1	B	7	4HB5	Haslibach	Burkhart	5 hours	active	NGS_UDP0019
+Plate_1	B	8	9DM2	Duebendorf	MWAC	2 weeks	passive	NGS_UDP0020
+Plate_1	B	9	9M2control1	NA	MWAC	NA	field_control	NGS_UDP0021
+Plate_1	B	10	BLANK4	NA	Extraction Blanks	NA	extr_control	NGS_UDP0022
+Plate_1	B	11	2TS30	Talent	Sass	30 min	active	NGS_UDP0023
+Plate_1	B	12	1DS5	Duebendorf	Sass	5 hours	active	NGS_UDP0024
+Plate_1	C	1	3CC30	Coruz	Coriolis	30 min	active	NGS_UDP0025
+Plate_1	C	2	3CC5	Coruz	Coriolis	5 hours	active	NGS_UDP0026
+Plate_1	C	3	1DE30	Duebendorf	Electrostatic	30 min	active	NGS_UDP0027
+Plate_1	C	4	1DE5	Duebendorf	Electrostatic	5 hours	active	NGS_UDP0028
+Plate_1	C	5	8RE5	Riedgraben	Electrostatic	5 hours	active	NGS_UDP0029
+Plate_1	C	6	6GB30	Gaebelbach	Burkhart	30 min	active	NGS_UDP0030
+Plate_1	C	7	5LB5	Leugene	Burkhart	5 hours	active	NGS_UDP0031
+Plate_1	C	8	9TM2	Talent	MWAC	2 weeks	passive	NGS_UDP0032
+Plate_1	C	9	9M2control2	NA	MWAC	NA	field_control	NGS_UDP0033
+Plate_1	C	10	3CD4	Coruz	Drone	10 min	active	NGS_UDP0034
+Plate_1	C	11	3CS30	Coruz	Sass	30 min	active	NGS_UDP0035
+Plate_1	C	12	2TS5	Talent	Sass	5 hours	active	NGS_UDP0036
+Plate_1	D	1	4HC30	Haslibach	Coriolis	30 min	active	NGS_UDP0037
+Plate_1	D	2	4HC5	Haslibach	Coriolis	5 hours	active	NGS_UDP0038
+Plate_1	D	3	2TE30	Talent	Electrostatic	30 min	active	NGS_UDP0039
+Plate_1	D	4	BLANK1	NA	Extraction Blanks	NA	extr_control	NGS_UDP0040
+Plate_1	D	5	4HEcontrol	Haslibach	Electrostatic	NA	field_control	NGS_UDP0041
+Plate_1	D	6	BLANK2	NA	Extraction Blanks	NA	extr_control	NGS_UDP0042
+Plate_1	D	7	6GB5	Gaebelbach	Burkhart	5 hours	active	NGS_UDP0043
+Plate_1	D	8	9CM2	Coruz	MWAC	2 weeks	passive	NGS_UDP0044
+Plate_1	D	9	1DD30	Duebendorf	Drone	30 min	active	NGS_UDP0045
+Plate_1	D	10	3CD5	Coruz	Drone	10 min	active	NGS_UDP0046
+Plate_1	D	11	4HS30	Haslibach	Sass	30 min	active	NGS_UDP0047
+Plate_1	D	12	3CS5	Coruz	Sass	5 hours	active	NGS_UDP0048
+Plate_1	E	1	5LC30	Leugene	Coriolis	30 min	active	NGS_UDP0049
+Plate_1	E	2	5LC5	Leugene	Coriolis	5 hours	active	NGS_UDP0050
+Plate_1	E	3	3CE30	Coruz	Electrostatic	30 min	active	NGS_UDP0051
+Plate_1	E	4	2TE5	Talent	Electrostatic	5 hours	active	NGS_UDP0052
+Plate_1	E	5	7WEcontrol	Weierbach	Electrostatic	NA	field_control	NGS_UDP0053
+Plate_1	E	6	7WB30	Weierbach	Burkhart	30 min	active	NGS_UDP0054
+Plate_1	E	7	7WB5	Weierbach	Burkhart	5 hours	active	NGS_UDP0055
+Plate_1	E	8	9HM2	Haslibach	MWAC	2 weeks	passive	NGS_UDP0056
+Plate_1	E	9	3CD30	Coruz	Drone	30 min	active	NGS_UDP0057
+Plate_1	E	10	3CD6	Coruz	Drone	10 min	active	NGS_UDP0058
+Plate_1	E	11	5LS30	Leugene	Sass	30 min	active	NGS_UDP0059
+Plate_1	E	12	4HS5	Haslibach	Sass	5 hours	active	NGS_UDP0060
+Plate_1	F	1	6GC30	Gaebelbach	Coriolis	30 min	active	NGS_UDP0061
+Plate_1	F	2	6GC5	Gaebelbach	Coriolis	5 hours	active	NGS_UDP0062
+Plate_1	F	3	4HE30	Haslibach	Electrostatic	30 min	active	NGS_UDP0063
+Plate_1	F	4	3CE5	Coruz	Electrostatic	5 hours	active	NGS_UDP0064
+Plate_1	F	5	1DB30	Duebendorf	Burkhart	30 min	active	NGS_UDP0065
+Plate_1	F	6	8RB30	Riedgraben	Burkhart	30 min	active	NGS_UDP0066
+Plate_1	F	7	8RB5	Riedgraben	Burkhart	5 hours	active	NGS_UDP0067
+Plate_1	F	8	9LM2	Leugene	MWAC	2 weeks	passive	NGS_UDP0068
+Plate_1	F	9	4HD30	Haslibach	Drone	30 min	active	NGS_UDP0069
+Plate_1	F	10	3CDcontrol	Coruz	Drone	NA	field_control	NGS_UDP0070
+Plate_1	F	11	BLANK5	NA	Extraction Blanks	NA	extr_control	NGS_UDP0071
+Plate_1	F	12	5LS5	Leugene	Sass	5 hours	active	NGS_UDP0072
+Plate_1	G	1	7WC30	Weierbach	Coriolis	30 min	active	NGS_UDP0073
+Plate_1	G	2	7WC5	Weierbach	Coriolis	5 hours	active	NGS_UDP0074
+Plate_1	G	3	5LE30	Leugene	Electrostatic	30 min	active	NGS_UDP0075
+Plate_1	G	4	4HE5	Haslibach	Electrostatic	5 hours	active	NGS_UDP0076
+Plate_1	G	5	2TB30	Talent	Burkhart	30 min	active	NGS_UDP0077
+Plate_1	G	6	1DB5	Duebendorf	Burkhart	5 hours	active	NGS_UDP0078
+Plate_1	G	7	4HBcontrol	Haslibach	Burkhart	NA	field_control	NGS_UDP0079
+Plate_1	G	8	9GM2	Gaebelbach	MWAC	2 weeks	passive	NGS_UDP0080
+Plate_1	G	9	3CD1	Coruz	Drone	10 min	active	NGS_UDP0081
+Plate_1	G	10	4HDcontrol	Haslibach	Drone	NA	field_control	NGS_UDP0082
+Plate_1	G	11	6GS30	Gaebelbach	Sass	30 min	active	NGS_UDP0083
+Plate_1	G	12	6GS5	Gaebelbach	Sass	5 hours	active	NGS_UDP0084
+Plate_1	H	1	8RC30	Riedgraben	Coriolis	30 min	active	NGS_UDP0085
+Plate_1	H	2	8RC5	Riedgraben	Coriolis	5 hours	active	NGS_UDP0086
+Plate_1	H	3	6GE30	Gaebelbach	Electrostatic	30 min	active	NGS_UDP0087
+Plate_1	H	4	5LE5	Leugene	Electrostatic	5 hours	active	NGS_UDP0088
+Plate_1	H	5	3CB30	Coruz	Burkhart	30 min	active	NGS_UDP0089
+Plate_1	H	6	2TB5	Talent	Burkhart	5 hours	active	NGS_UDP0090
+Plate_1	H	7	BLANK3	NA	Extraction Blanks	NA	extr_control	NGS_UDP0091
+Plate_1	H	8	9WM2	Weierbach	MWAC	2 weeks	passive	NGS_UDP0092
+Plate_1	H	9	3CD2	Coruz	Drone	10 min	active	NGS_UDP0093
+Plate_1	H	10	1DB30_1	Duebendorf	Burkhart	30 min	active	NGS_UDP0094
+Plate_1	H	11	7WS30	Weierbach	Sass	30 min	active	NGS_UDP0095
+Plate_1	H	12	7WS5	Weierbach	Sass	5 hours	active	NGS_UDP0096
+Plate_2	A	1	BLANK6	NA	Extraction Blanks	NA	extr_control	NGS_UDP0097
+Plate_2	A	2	5LH30	Leugene	Hepa	30 min	active	NGS_UDP0098
+Plate_2	A	3	5LH5	Leugene	Hepa	5 hours	active	NGS_UDP0099
+Plate_2	A	4	9TF2	Talent	WSL_Filter	2 weeks	passive	NGS_UDP0100
+Plate_2	A	5	1DK30	Duebendorf	Kärcher	30 min	active	NGS_UDP0101
+Plate_2	A	6	8RK30	Riedgraben	Kärcher	30 min	active	NGS_UDP0102
+Plate_2	A	7	7WK5	Weierbach	Kärcher	5 hours	active	NGS_UDP0103
+Plate_2	B	1	8RS5	Riedgraben	Sass	5 hours	active	NGS_UDP0109
+Plate_2	B	2	6GH30	Gaebelbach	Hepa	30 min	active	NGS_UDP0110
+Plate_2	B	3	6GH5	Gaebelbach	Hepa	5 hours	active	NGS_UDP0111
+Plate_2	B	4	9CF2	Coruz	WSL_Filter	2 weeks	passive	NGS_UDP0112
+Plate_2	B	5	2TK30	Talent	Kärcher	30 min	active	NGS_UDP0113
+Plate_2	B	6	1DK5	Duebendorf	Kärcher	5 hours	active	NGS_UDP0114
+Plate_2	B	7	8RK5	Riedgraben	Kärcher	5 hours	active	NGS_UDP0115
+Plate_2	C	1	4HScontrol	Haslibach	Sass	NA	field_control	NGS_UDP0121
+Plate_2	C	2	7WH30	Weierbach	Hepa	30 min	active	NGS_UDP0122
+Plate_2	C	3	7WH5	Weierbach	Hepa	5 hours	active	NGS_UDP0123
+Plate_2	C	4	9HF2	Haslibach	WSL_Filter	2 weeks	passive	NGS_UDP0124
+Plate_2	C	5	3CK30	Coruz	Kärcher	30 min	active	NGS_UDP0125
+Plate_2	C	6	2TK5	Talent	Kärcher	5 hours	active	NGS_UDP0126
+Plate_2	C	7	4HKcontrol	Haslibach	Kärcher	NA	field_control	NGS_UDP0127
+Plate_2	D	1	7WScontrol	Weierbach	Sass	NA	field_control	NGS_UDP0133
+Plate_2	D	2	8RH30	Riedgraben	Hepa	30 min	active	NGS_UDP0134
+Plate_2	D	3	8RH5	Riedgraben	Hepa	5 hours	active	NGS_UDP0135
+Plate_2	D	4	9LF2	Leugene	WSL_Filter	2 weeks	passive	NGS_UDP0136
+Plate_2	D	5	4HK30	Haslibach	Kärcher	30 min	active	NGS_UDP0137
+Plate_2	D	6	BLANK9	NA	Extraction Blanks	NA	extr_control	NGS_UDP0138
+Plate_2	D	7	7WKcontrol	Weierbach	Kärcher	NA	field_control	NGS_UDP0139
+Plate_2	E	1	1DH30	Duebendorf	Hepa	30 min	active	NGS_UDP0145
+Plate_2	E	2	1DH5	Duebendorf	Hepa	5 hours	active	NGS_UDP0146
+Plate_2	E	3	4HHcontrol	Haslibach	Hepa	NA	field_control	NGS_UDP0147
+Plate_2	E	4	9GF2	Gaebelbach	WSL_Filter	2 weeks	passive	NGS_UDP0148
+Plate_2	E	5	BLANK8	NA	Extraction Blanks	NA	extr_control	NGS_UDP0149
+Plate_2	E	6	3CK5	Coruz	Kärcher	5 hours	active	NGS_UDP0150
+Plate_2	E	7	PCR30_neg1	NA	NA	NA	PCR_control	NGS_UDP0151
+Plate_2	F	1	2TH30	Talent	Hepa	30 min	active	NGS_UDP0157
+Plate_2	F	2	2TH5	Talent	Hepa	5 hours	active	NGS_UDP0158
+Plate_2	F	3	7WHcontrol	Weierbach	Hepa	NA	field_control	NGS_UDP0159
+Plate_2	F	4	9WF2	Weierbach	WSL_Filter	2 weeks	passive	NGS_UDP0160
+Plate_2	F	5	5LK30	Leugene	Kärcher	30 min	active	NGS_UDP0161
+Plate_2	F	6	4HK5	Haslibach	Kärcher	5 hours	active	NGS_UDP0162
+Plate_2	F	7	PCR25_neg1	NA	NA	NA	PCR_control	NGS_UDP0163
+Plate_2	G	1	3CH30	Coruz	Hepa	30 min	active	NGS_UDP0169
+Plate_2	G	2	3CH5	Coruz	Hepa	5 hours	active	NGS_UDP0170
+Plate_2	G	3	BLANK7	NA	Extraction Blanks	NA	extr_control	NGS_UDP0171
+Plate_2	G	4	9RF2	Riedgraben	WSL_Filter	2 weeks	passive	NGS_UDP0172
+Plate_2	G	5	6GK30	Gaebelbach	Kärcher	30 min	active	NGS_UDP0173
+Plate_2	G	6	5LK5	Leugene	Kärcher	5 hours	active	NGS_UDP0174
+Plate_2	G	7	PCR37_neg1	NA	NA	NA	PCR_control	NGS_UDP0175
+Plate_2	H	1	4HH30	Haslibach	Hepa	30 min	active	NGS_UDP0181
+Plate_2	H	2	4HH5	Haslibach	Hepa	5 hours	active	NGS_UDP0182
+Plate_2	H	3	9DF2	Duebendorf	WSL_Filter	2 weeks	passive	NGS_UDP0183
+Plate_2	H	4	9F2control1	NA	WSL_Filter	NA	field_control	NGS_UDP0184
+Plate_2	H	5	7WK30	Weierbach	Kärcher	30 min	active	NGS_UDP0185
+Plate_2	H	6	6GK5	Gaebelbach	Kärcher	5 hours	active	NGS_UDP0186

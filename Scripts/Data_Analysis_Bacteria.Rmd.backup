@@ -1,0 +1,867 @@
+---
+title: "Bacteria data analysis"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(forcats)
+library(here)
+library(readr)
+library(ggplot2)
+library(vegan)
+library(readxl)
+library(corrplot)
+library(Biostrings)
+library(decontam)
+library(eulerr)
+```
+
+# Set-up
+
+## define Marker
+
+```{r}
+primer <- "Bacteria"
+```
+
+## load meta-data
+
+```{r}
+Meta <- read_tsv(here("Data", "Meta_data.tsv"))
+```
+
+# load data
+
+```{r}
+Bac_ASV <- read_tsv(here("Data", primer, "out_final", "Bacteria_ASW_glom.txt")) %>%
+  mutate(Sample = gsub(".+?(NGS.+)", "\\1", Sample)) %>%
+  dplyr::rename(Index = Sample)
+
+Bac_tax <- read_tsv(here("Data", primer, "out_final", "Bacteria_taxa_80_glom.txt"))
+
+Bac_seq <- readDNAStringSet(here("Data", primer, "out_final", paste(primer, "Seq_glom", sep = "_")))
+
+DNAC <- read_tsv(here("Data", "DNA_conc_air_sampler_comp.txt"))
+```
+
+# fragment length distribution
+
+```{r}
+Bac_len <-
+Bac_seq %>%
+  width() %>%
+  tibble(len = .) %>%
+  mutate(seq = names(Bac_seq))
+
+Bac_len %>%
+  group_by(len) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(x = len, y = n))+
+  geom_bar(stat = "identity")
+
+Bac_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  group_by(seq) %>%
+  summarise(prev = sum(value > 0),
+            reads = sum(value)) %>%
+  na.omit() %>%
+  filter(reads < quantile(reads, 0.9)) %>%
+  left_join(Bac_len) %>%
+  mutate(reads_o_prev = reads/prev) %>%
+  ggplot(aes(x = len, y = reads_o_prev))+
+  geom_point(shape = 21, alpha = 0.5, size = 3)
+```
+
+# rarefaction
+
+```{r}
+Bac_tax %>%
+  group_by(phylum) %>%
+  summarise(n = n()) %>%
+  arrange(desc(n))
+```
+
+```{r}
+# Build rarefaction curves per major phylum
+major_phyla <- Bac_tax %>%
+  group_by(phylum) %>%
+  summarise(n = n()) %>%
+  filter(!is.na(phylum)) %>%
+  arrange(desc(n)) %>%
+  dplyr::slice(1:4) %>%
+  pull(phylum)
+
+major_phyla <- c(major_phyla, "Other")
+
+rc_df <- map_df(major_phyla, function(ph) {
+
+  if(ph == "Other"){
+    seqs <- Bac_tax %>%
+    filter(!phylum %in% major_phyla) %>%
+    pull(seq)
+  } else{
+    seqs <- Bac_tax %>%
+    filter(phylum == ph) %>%
+    pull(seq)
+  }
+
+  asv_sub <- Bac_ASV %>%
+    select(Index, any_of(seqs)) %>%
+    data.frame()
+
+  rownames(asv_sub) <- asv_sub$Index
+  asv_mat <- asv_sub[, -1, drop = FALSE] %>% as.matrix()
+
+  if(ncol(asv_mat) == 0) return(tibble())
+
+  rarecurve(
+    asv_mat,
+    step = 1000,
+    label = FALSE,
+    tidy = TRUE
+  ) %>%
+    dplyr::rename(Index = Site) %>%
+    mutate(phylum = ph)
+})
+
+rc_plot_df <- rc_df %>%
+  left_join(Meta, by = "Index")
+
+ggplot(rc_plot_df, aes(x = Sample, y = Species, color = duration, group = Index)) +
+  geom_line() +
+  facet_wrap(~phylum, scales = "free_y", ncol = 2) +
+  theme_minimal()+
+  theme(legend.position = "right")+
+  scale_color_brewer(palette = "Set1")
+```
+
+Sequencing depth varied between samples but reached saturation in most cases.
+
+# clean data
+
+## index hopping
+
+We demultiplexed with all indices (full Plate) but not all were used. Unused indices should not have been found but could be present in the data due to random mutations and maximum likelihood index-assignment.
+
+```{r}
+index_hop <-
+Bac_ASV %>%
+  filter(!Index %in% Meta$Index) %>%
+  pivot_longer(-Index) %>%
+  filter(value > 0)
+
+index_hop
+```
+
+```{r}
+Bac_ASV <-
+  Bac_ASV %>%
+  filter(Index %in% Meta$Index)
+```
+
+## check controls
+
+### decontam
+
+```{r}
+# define which samples are blanks
+# field controls set to NA (excluded) as they contain genuine sequences
+
+Blanks <-
+Meta %>%
+  filter(Index %in% Bac_ASV$Index) %>%
+  select(Index, Sample_names, Type) %>%
+  mutate(is_neg = case_when(Type %in% c("active", "passive") ~ FALSE,
+                            Type %in% c("extr_control", "PCR_control") ~ TRUE,
+                            Type == "field_control" ~ NA)) %>%
+  arrange(Index)
+
+# check that sample order is matching
+all(Bac_ASV$Index == Blanks$Index)
+
+# run decontam
+contamdf.prev <- isContaminant(as.matrix(Bac_ASV[,-1]),
+                               neg = Blanks$is_neg,
+                               method="prevalence")
+
+p_thresholds = seq(1,0,-0.001)
+
+contam_counts <- purrr::map_df(p_thresholds, function(x) {
+  tibble(
+    p_threshold = x,
+    num_contaminants = sum(contamdf.prev$p < x, na.rm = TRUE)
+  )
+})
+
+ggplot(contam_counts, aes(x = p_threshold, y = num_contaminants)) +
+  geom_point(size = 0.1)+
+  geom_smooth(linewidth = 0.5, color = "red") +
+  geom_vline(xintercept = 0.1, colour = "blue")+
+  labs(
+    title = "Prevalence-based contaminant detection",
+    x = "P-value Threshold",
+    y = "Number of Contaminants"
+  ) +
+  theme_minimal()+
+  scale_x_reverse()
+```
+
+```{r}
+contam_seqs <-
+contamdf.prev %>%
+  filter(p < 0.1) %>%
+  tibble::rownames_to_column("seq")
+```
+
+### visualize contaminant sequences
+
+- abundance ratio between blanks and samples
+
+```{r}
+cont_ratio <-
+Bac_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  left_join(Meta) %>%
+  select(Index, seq, Sample_names, Type, value) %>%
+  mutate(Type = case_when(Type %in% c("active", "passive") ~ "Sample",
+                            Type %in% c("extr_control", "PCR_control") ~ "Lab",
+                            Type == "field_control" ~ "Field")) %>%
+  group_by(Type, seq) %>%
+  summarise(mean_val = round(mean(value),2),
+            max_val = max(value)) %>%
+  pivot_longer(one_of(c("mean_val", "max_val"))) %>%
+  pivot_wider(names_from = Type, values_from = value) %>%
+  filter(Lab > 0 | Field > 0) %>%
+  pivot_longer(!one_of("seq", "Sample", "name"), names_to= "Type") %>%
+  mutate(ratio = round(value/Sample,3))
+
+Field_only <-
+cont_ratio %>%
+  filter(Type == "Field") %>%
+  filter(value > 0)
+
+Lab_only <-
+cont_ratio %>%
+  filter(Type == "Lab") %>%
+  filter(value > 0)
+```
+
+### lab controls
+
+```{r}
+Lab_only$seq %>% unique %>% length()
+```
+
+```{r}
+Lab_only %>%
+  filter(name == "mean_val") %>%
+  filter(ratio > 1) %>%
+  nrow()
+```
+
+```{r}
+Bac_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  filter(seq %in% unique(Lab_only$seq)) %>%
+  left_join(Meta) %>%
+  filter(Type %in% c("extr_control", "PCR_control")) %>%
+  group_by(seq) %>%
+  filter(sum(value) > 0) %>%
+  left_join(
+        {filter(cont_ratio,
+                Type == "Lab",
+                name == "mean_val") %>%
+            select(seq, ratio)
+            }
+  ) %>%
+  mutate(ratio = ifelse(value == 0, NA, ratio)) %>%
+  left_join(Bac_tax) %>%
+  mutate(spec_name =
+           case_when(!is.na(species) ~ paste(species, seq, sep = " "),
+                     !is.na(genus) ~ paste(genus, "sp.", seq, sep = " "),
+                     !is.na(family) ~ paste(family, "(fam)", seq, sep = " "),
+                     !is.na(order) ~ paste(order, "(ord)", seq, sep = " "),
+                     !is.na(class) ~ paste(class, "(cl)", seq, sep = " "),
+                     !is.na(phylum) ~ paste(phylum, "(ph)", seq, sep = " "),
+                     TRUE ~ seq)) %>%
+  ggplot(aes(x = Sample_names, y = spec_name, fill = ratio))+
+  geom_tile()+
+  scale_fill_viridis_c(na.value = "white")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 0))
+```
+
+### field controls
+
+```{r}
+Field_only$seq %>% unique %>% length()
+```
+
+```{r}
+Field_only %>%
+  filter(name == "mean_val") %>%
+  filter(ratio > 1) %>%
+  nrow()
+```
+
+```{r}
+Field_only %>%
+  filter(name == "mean_val") %>%
+  filter(ratio > 10) %>%
+  nrow()
+```
+
+```{r}
+Field_cont <-
+Bac_ASV %>%
+  pivot_longer(-Index, names_to = "seq") %>%
+  filter(seq %in% unique(Field_only$seq)) %>%
+  left_join(Meta) %>%
+  filter(Type == "field_control") %>%
+  filter(value > 0) %>%
+  left_join(
+        {filter(cont_ratio, Type == "Field",
+                name == "mean_val") %>%
+            select(seq, ratio)
+            }
+  )
+
+Field_cont %>%
+  mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>%
+  ggplot(aes(x = Sampler, y = value, colour = ratio_cat))+
+  geom_point(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.6))+
+  scale_y_log10()+
+  scale_color_brewer(palette = "Set1")+
+  theme_minimal()+
+  coord_flip()
+```
+
+```{r}
+Field_cont %>%
+  mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>%
+  group_by(ratio_cat, Sampler) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(x = Sampler, y = n, colour = ratio_cat))+
+  geom_point(position = position_dodge(width = 0.4), size = 3, shape = 21)+
+  scale_color_brewer(palette = "Set1")+
+  theme_minimal()+
+  coord_flip()
+```
+
+```{r}
+Field_cont %>%
+  group_by(Sampler) %>%
+  summarise(n = n())
+```
+
+```{r}
+Field_cont %>%
+  mutate(ratio_cat = case_when(
+    ratio < 1 ~ "< 1",
+    ratio > 1 & ratio < 10 ~ "> 01",
+    ratio > 10 ~ "> 10")) %>%
+  group_by(ratio_cat, Sampler) %>%
+  summarise(n = n()) %>%
+  pivot_wider(names_from = ratio_cat, values_from = n, values_fill = 0)
+```
+
+# exclude contaminants
+
+- For every OTU present in any laboratory negative control we remove twice the number of the maximum reads from all samples.
+- For every OTU present in a field negative control at higher average abundance than in the samples we remove twice the max number of reads from all samples.
+- OTUs present in the field negative control at lower average abundance than in the sample are kept untouched.
+
+```{r}
+Remove_reads_lab <-
+  Lab_only %>%
+  filter(name == "max_val") %>%
+  select(seq, value)
+
+Remove_reads_field <-
+Field_only %>%
+  group_by(seq) %>%
+  filter(min(ratio) > 1) %>%
+  ungroup() %>%
+  filter(name == "max_val") %>%
+  select(seq, value)
+
+Remove_reads <-
+  bind_rows(Remove_reads_lab,
+            Remove_reads_field) %>%
+  group_by(seq) %>%
+  filter(value == max(value)) %>%
+  mutate(seq_remove = value * 2) %>%
+  mutate(seq_remove = ceiling(seq_remove))
+
+Bac_mat <- as.matrix(Bac_ASV[,-1])
+Remove_mat <- Bac_mat
+Remove_mat[] <- 0
+Remove_mat[,Remove_reads$seq] <- rep(Remove_reads$seq_remove, each = nrow(Remove_mat))
+
+Bac_mat_clean <- Bac_mat - Remove_mat
+Bac_mat_clean[Bac_mat_clean < 0] <- 0
+```
+
+- remove empty OTUs
+
+```{r}
+Bac_mat_clean <- Bac_mat_clean[, colSums(Bac_mat_clean) > 0]
+```
+
+```{r}
+ncol(Bac_mat) - ncol(Bac_mat_clean)
+```
+
+- back-transform to tibble and add back sample index
+
+```{r}
+Bac_ASV <-
+as_tibble(Bac_mat_clean) %>%
+  bind_cols(select(Bac_ASV, "Index"), .)
+```
+
+- remove controls from ASV data
+
+```{r}
+blank_index <-
+  Meta %>%
+  filter(!Type %in% c("active", "passive")) %>%
+  pull(Index)
+
+Bac_ASV <-
+Bac_ASV %>%
+  filter(!Index %in% blank_index)
+```
+
+- check for empty samples
+
+```{r}
+Sample_reads <-
+Bac_ASV %>%
+  pivot_longer(-Index) %>%
+  group_by(Index) %>%
+  summarise(value = sum(value)) %>%
+  arrange(value) %>%
+  left_join(Meta)
+
+Sample_reads
+```
+
+```{r}
+empty_samples <-
+  Sample_reads %>%
+  filter(value < 1000) %>%
+  pull(Index)
+
+Bac_ASV <-
+Bac_ASV %>%
+  filter(!Index %in% empty_samples)
+```
+
+```{r}
+Bac_ASV_long <-
+  pivot_longer(Bac_ASV, -Index, names_to = "seq", values_to = "reads")
+```
+
+## subset for Bacteria only
+
+- keep only sequences assigned to the kingdom "Bacteria" at phylum level
+
+```{r}
+Bac_tax <-
+  Bac_tax %>%
+  filter(seq %in% colnames(Bac_ASV))
+```
+
+```{r}
+Bac_ASV_long %>%
+  group_by(seq) %>%
+  summarise(reads = sum(reads)) %>%
+  left_join(Bac_tax) %>%
+  group_by(kingdom, phylum) %>%
+  summarise(n_OTUs = n(),
+            reads = sum(reads)) %>%
+  pivot_longer(one_of(c("n_OTUs", "reads"))) %>%
+  ggplot(aes(x = phylum, y = value)) +
+  facet_grid(kingdom~name, scales = "free", space = "free")+
+  geom_bar(stat = "identity")+
+  coord_flip()+
+  scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+- keep sequences assigned at phylum level
+
+```{r}
+Bac_seq_keep <-
+Bac_tax %>%
+  filter(!is.na(phylum)) %>%
+  pull(seq)
+```
+
+```{r}
+ncol(Bac_ASV[,-1]) - length(Bac_seq_keep)
+```
+
+```{r}
+Bac_ASV_long %>%
+  group_by(seq) %>%
+  summarise(reads = sum(reads)) %>%
+  left_join(Bac_tax) %>%
+  mutate(cat = case_when(!is.na(phylum) ~ "assigned",
+                         TRUE ~ "unassigned")) %>%
+  group_by(cat) %>%
+  summarise(reads = sum(reads),
+            n_seq = n()) %>%
+  mutate(reads_prct = signif(reads/sum(reads)*100,2),
+         seq_prct = signif(n_seq/sum(n_seq)*100,2))
+```
+
+```{r}
+Bac_ASV_clean <-
+  Bac_ASV %>%
+  select(one_of("Index", Bac_seq_keep))
+```
+
+```{r}
+Bac_ASV_clean_long <-
+  pivot_longer(Bac_ASV_clean, -Index, names_to = "seq", values_to = "reads")
+```
+
+# prevalence
+
+```{r}
+Bac_ASV_clean_long %>%
+  filter(reads > 0) %>%
+  group_by(seq) %>%
+  summarise(prev = n()) %>%
+  ggplot(aes(x = prev))+
+  geom_histogram(binwidth = 5, fill = NA, color = "darkred")+
+  theme_minimal()
+```
+
+## Species richness
+
+```{r}
+Bac_ASV_clean_long %>%
+  left_join(Bac_tax) %>%
+  select(seq, phylum) %>%
+  distinct() %>%
+  group_by(phylum) %>%
+  summarise(n = n())
+```
+
+```{r}
+rar_curve <-
+Bac_ASV_clean %>%
+  select(-Index) %>%
+  as.matrix %>%
+  `rownames<-`(Bac_ASV_clean$Index) %>%
+  rarecurve(x = ., step = 1000, tidy = TRUE)
+
+rar_curve %>%
+  left_join(Meta, by = c("Site" = "Index")) %>%
+  filter(grepl("active|passive", Type)) %>%
+  ggplot(aes(x = Sample, y = Species, group = Site, colour = duration)) +
+  geom_line()+
+  facet_wrap(~Sampler)
+```
+
+```{r}
+S_df <-
+Bac_ASV_clean_long %>%
+  group_by(Index) %>%
+  filter(reads > 0) %>%
+  summarise(S = n()) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  mutate(Sampler = factor(Sampler, levels = unique(.$Sampler)[c(8,1,3,2,5,6,4,7)]))
+
+S_df %>%
+  mutate(Sampler = factor(Sampler, levels = c("Kärcher","Coriolis", "Sass", "Hepa",
+                                             "Burkhart", "Electrostatic", "MWAC",
+                                             "WSL_Filter"))) %>%
+  ggplot(aes(y = S, x = duration, colour = Sites))+
+  facet_grid(~Sampler, scales = "free_x")+
+  geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
+  geom_point()+
+  theme_minimal()+
+  scale_color_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+        legend.position = "bottom")
+```
+
+### richness vs air volume
+
+```{r}
+flow_rate <-
+  Meta %>%
+  filter(Type == "active" & Sampler != "Drone") %>%
+  select(Sampler, duration) %>%
+  distinct() %>%
+  mutate(flow = case_when(
+    Sampler == "Hepa" ~ 60,
+    Sampler == "Kärcher" ~ 3000,
+    Sampler == "Sass" ~ 300,
+    Sampler == "Coriolis" ~ 300,
+    Sampler == "Electrostatic" ~ 10,
+    Sampler == "Burkhart" ~ 16.5,
+  )) %>%
+  mutate(air_vol = case_when(
+    duration == "30 min" ~ flow*30,
+    duration == "5 hours" ~ flow*5*60
+  ))
+```
+
+```{r}
+S_df %>%
+  left_join(flow_rate) %>%
+  filter(Type == "active" & Sampler != "Drone") %>%
+  ggplot(aes(x = air_vol, y = S, colour = Sampler, shape = duration))+
+  geom_point()+
+  geom_smooth(aes(group = 1), method = "lm", colour = "darkblue", size = 0.2)+
+  scale_x_log10()+
+  scale_color_brewer(palette = "Set1")+
+  theme_bw()
+```
+
+### richness corr
+
+```{r}
+Cor_mat <-
+S_df %>%
+  left_join(flow_rate) %>%
+  mutate(Sampler = paste(Sampler, duration)) %>%
+  arrange(Type, duration, desc(flow)) %>%
+  select(Sites, Sampler, S) %>%
+  pivot_wider(names_from = Sampler, values_from = S) %>%
+  select(-Sites) %>%
+  cor(method = "pearson")
+
+{
+Cor_mat %>%
+  corrplot(type = "lower", diag = F, tl.col = "black", tl.cex = 0.8, method = "ellipse",
+           na.label = "square", na.label.col = "white")
+
+rect(xleft = 0.5, ybottom = 8.5, xright = 5.5, ytop = 13.5, density = NULL, angle = 45,
+     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
+
+rect(xleft = 6.5, ybottom = 2.5, xright = 11.5, ytop = 7.5, density = NULL, angle = 45,
+     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
+}
+```
+
+### sample completeness
+
+```{r}
+ASV_sample_based <-
+  Bac_ASV_clean_long %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  mutate(reads = as.numeric(reads > 0)) %>%
+  select(Index, Sampler, duration, seq, reads) %>%
+  pivot_wider(names_from = seq, values_from = reads)
+
+site_rar_df <-
+ASV_sample_based %>%
+  split(~Sampler+duration)
+
+site_rar_df <-
+site_rar_df[unlist(lapply(site_rar_df, nrow))>0] %>%
+  lapply(., function(x){
+
+  if(nrow(x) > 0){res <- vegan::specaccum(x[,-c(1:3)])}
+
+    resdf = tibble(sites = res$sites,
+                   Richness = res$richness,
+                   sd = res$sd)
+
+    return(resdf)
+  })
+
+site_rar_df %>%
+  bind_rows(.id = "var") %>%
+  tidyr::separate_wider_delim(col = var, names = c("Sampler", "duration"), delim = ".") %>%
+  ggplot(aes(x = sites, y = Richness, fill = duration))+
+  geom_line()+
+  geom_ribbon(aes(ymin = Richness - sd, ymax = Richness + sd), colour = NULL, alpha = 0.5)+
+  facet_wrap(.~Sampler)+
+  scale_x_continuous(breaks = seq(1,8,1))
+```
+
+## Species comp
+
+```{r}
+ASV_dist <- vegdist(Bac_ASV_clean[,-1], method = "bray", binary = T)
+
+NMDS <- metaMDS(ASV_dist)
+
+NMDS$points %>%
+  as_tibble() %>%
+  mutate(Index = Bac_ASV_clean$Index) %>%
+  left_join(Meta) %>%
+  ggplot(aes(x = MDS1, y = MDS2, colour = Sampler))+
+  geom_point()+
+  facet_wrap(~duration)
+```
+
+```{r}
+adonis2(ASV_dist ~ Sampler + Sites + duration,
+        data = Meta[Meta$Index %in% Bac_ASV_clean$Index,],
+        by = "margin")
+
+betadisper(ASV_dist, group = Meta[Meta$Index %in% Bac_ASV_clean$Index,]$Sites) %>%
+  anova()
+
+betadisper(ASV_dist, group = Meta[Meta$Index %in% Bac_ASV_clean$Index,]$Sampler) %>%
+  anova()
+
+betadisper(ASV_dist, group = Meta[Meta$Index %in% Bac_ASV_clean$Index,]$duration) %>%
+  anova()
+```
+
+### similarity ranking
+
+```{r}
+ASV_dist_M <- as.matrix(ASV_dist)
+
+dimnames(ASV_dist_M) <-
+  list(Bac_ASV_clean$Index, Bac_ASV_clean$Index)
+
+diag(ASV_dist_M) <- NA
+
+Meta_comb1 <-
+  Meta %>%
+  mutate(comb1 = paste(Sampler, duration, Sites)) %>%
+  select(Index, comb1)
+
+Meta_comb2 <-
+  Meta %>%
+  mutate(comb2 = paste(Sampler, duration, Sites)) %>%
+  select(Index, comb2) %>%
+  dplyr::rename(Index2 = Index)
+
+ASV_dist_df <-
+ASV_dist_M %>%
+  data.frame() %>%
+  tibble::rownames_to_column(var = "Index") %>%
+  pivot_longer(-Index, names_to = "Index2") %>%
+  filter(!is.na(value)) %>%
+  left_join(Meta_comb1) %>%
+  left_join(Meta_comb2)
+
+ASV_dist_cor <-
+ASV_dist_df %>%
+  filter(!grepl("Drone", comb1) & !grepl("Drone", comb2)) %>%
+  mutate(site_comb = paste(gsub(".+\\s(\\w+)$", "\\1", comb1),
+                           gsub(".+\\s(\\w+)$", "\\1", comb2),
+                           sep = "_")) %>%
+  mutate(Sampler1 = gsub("(.+)\\s\\w+$", "\\1", comb1),
+         Sampler2 = gsub("(.+)\\s\\w+$", "\\1", comb2)) %>%
+  filter(Sampler1 == Sampler2) %>%
+  select(value, site_comb, Sampler1) %>%
+  pivot_wider(names_from = Sampler1, values_from = value) %>%
+  select(-site_comb) %>%
+  distinct() %>%
+  select(rownames(Cor_mat)) %>%
+  cor(method = "pearson") %>%
+  {.}
+
+ASV_dist_cor %>%
+  corrplot(type = "lower", diag = F, tl.col = "black", tl.cex = 0.8, method = "ellipse",
+           na.label = "square", na.label.col = "white")
+```
+
+## Venn diagram
+
+```{r}
+sampler_venn <-
+Bac_ASV_clean_long %>%
+  left_join(Bac_tax) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  filter(duration %in% c("30 min", "5 hours")) %>%
+  group_by(Sampler, duration, seq) %>%
+  summarise(reads = sum(reads)) %>%
+  mutate(reads = reads > 0) %>%
+  pivot_wider(names_from = duration, values_from = reads) %>%
+  select(-seq) %>%
+  euler(shape = "ellipse", by = list(Sampler))
+
+eulerr_options(quantities = list(fontsize = 8, col = "darkred", cex = 1.2, fontfamily = "sans"))
+
+plot(sampler_venn, legend = TRUE, quantities = TRUE)
+```
+
+```{r}
+active <-
+Bac_ASV_clean_long %>%
+  left_join(Bac_tax) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  filter(duration %in% c("5 hours")) %>%
+  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>%
+  group_by(Type, Sampler, seq) %>%
+  summarise(reads = sum(reads))%>%
+  mutate(reads = reads > 0)
+
+passive <-
+  Bac_ASV_clean_long %>%
+  left_join(Bac_tax) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  filter(duration %in% c("2 weeks")) %>%
+  group_by(Type, Sampler, seq) %>%
+  summarise(reads = sum(reads)) %>%
+  mutate(reads = reads > 0)
+
+comp_df <- active %>% mutate(comp = "") %>% dplyr::slice(0)
+
+for(i in unique(active$Sampler)){
+
+  comp_df <-
+  active %>%
+    filter(Sampler == i) %>%
+    bind_rows(passive) %>%
+    mutate(comp = i) %>%
+    bind_rows(comp_df, .)
+}
+
+sampler_venn <-
+comp_df %>%
+  group_by(comp) %>%
+  mutate(Sampler = case_when(Type == "active" ~ "active",
+                             TRUE ~ Sampler)) %>%
+  select(-Type) %>%
+  pivot_wider(names_from = Sampler, values_from = reads) %>%
+  select(-seq) %>%
+  euler(shape = "ellipse", by = list(comp))
+
+sampler_venn
+
+eulerr_options(quantities = list(fontsize = 8))
+
+plot(sampler_venn, legend = TRUE, quantities = TRUE)
+```
+
+```{r}
+sampler_venn <-
+Bac_ASV_clean_long %>%
+  left_join(Bac_tax) %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  filter(duration == "5 hours") %>%
+  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>%
+  group_by(Sampler, seq) %>%
+  summarise(reads = sum(reads)) %>%
+  mutate(reads = reads > 0) %>%
+  pivot_wider(names_from = Sampler, values_from = reads) %>%
+  select(-seq) %>%
+  euler(shape = "ellipse")
+
+eulerr_options(quantities = list(fontsize = 10, col = "black"))
+
+plot(sampler_venn, legend = TRUE, quantities = TRUE)
+```

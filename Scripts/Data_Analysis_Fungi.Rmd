@@ -413,7 +413,7 @@ Field_cont <-
   filter(value > 0) %>%
   left_join(
     {filter(cont_ratio, Type == "Field",
-            name = "mean_val") %>%
+            name == "mean_val") %>%
         select(seq, ratio)
         }
   )
@@ -925,29 +925,47 @@ summary(vol_lm)
 
 # Sampling completeness
 
-Compute fraction of pooled 5h reference community captured per sampler × duration. Pool all samplers at each site for 5h as reference.
+Assess what fraction of the site community each sampler detects. Reference community = ALL species detected at a site across all samplers and durations (pooled). This answers: "Of all species we know are present, what fraction does this sampler × duration detect?"
+
+Build reference community per site (pool all samplers × durations).
 
 ```{r}
-ref_community <-
+ref_community_species <-
   Fungi_ASV_clean_long %>%
   left_join(Meta) %>%
-  filter(duration == "5 hours" | duration == "2 weeks") %>%
+  filter(Sampler != "Drone") %>%
+  filter(reads > 0) %>%
   group_by(Sites, seq) %>%
-  summarise(present = sum(reads) > 0) %>%
-  group_by(Sites) %>%
-  summarise(S_reference = sum(present))
+  summarise(in_reference = TRUE)
 
+ref_community_richness <-
+  ref_community_species %>%
+  group_by(Sites) %>%
+  summarise(S_reference = n())
+```
+
+Compute species-level completeness (fraction of reference species detected).
+
+```{r}
 completeness_df <-
   Fungi_ASV_clean_long %>%
   left_join(Meta) %>%
   filter(Sampler != "Drone") %>%
   group_by(Sites, Sampler, duration, seq) %>%
   summarise(reads = sum(reads)) %>%
+  mutate(detected = reads > 0) %>%
+  left_join(ref_community_species) %>%
   group_by(Sites, Sampler, duration) %>%
-  summarise(S_sampler = sum(reads > 0)) %>%
-  left_join(ref_community) %>%
-  mutate(fraction_detected = S_sampler / S_reference) %>%
-  mutate(taxon = "Fungi")
+  summarise(
+    S_sampler = sum(detected),
+    S_shared = sum(detected & in_reference),
+    .groups = "drop"
+  ) %>%
+  left_join(ref_community_richness) %>%
+  mutate(
+    fraction_detected = S_shared / S_reference,
+    taxon = "Fungi"
+  )
 ```
 
 Plot completeness by sampler and duration.
@@ -958,13 +976,76 @@ completeness_df %>%
   geom_boxplot() +
   coord_flip() +
   theme_minimal() +
-  labs(x = "Sampler", y = "Fraction of reference community detected", fill = "Duration")
+  labs(x = "Sampler", y = "Fraction of site community detected", fill = "Duration") +
+  ylim(0, 1)
+```
+
+Estimate asymptotic richness per site using estimateD (pooled across all samplers).
+
+```{r}
+# Build matrix: rows = OTUs, columns = Sites
+inext_pooled <-
+  Fungi_ASV_clean %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  select(-Index, -Sites, -Sampler, -duration, -Type, -Sample_names, -Plate, -row, -col) %>%
+  group_by(across(c(-where(is.numeric)))) %>%
+  summarise(across(where(is.numeric), sum), .groups = "drop")
+
+# Convert to proper format for estimateD
+site_matrix <-
+  Fungi_ASV_clean_long %>%
+  left_join(Meta) %>%
+  filter(Sampler != "Drone") %>%
+  group_by(Sites, seq) %>%
+  summarise(reads = sum(reads), .groups = "drop") %>%
+  pivot_wider(names_from = Sites, values_from = reads, values_fill = 0) %>%
+  select(-seq) %>%
+  as.matrix()
+
+inext_estimates <-
+  estimateD(site_matrix, datatype = "abundance", base = "size") %>%
+  filter(Order.q == 0) %>%
+  select(Sites = Assemblage, S_observed = Observed, S_estimated = Estimator, SE = s.e.)
+```
+
+Compute completeness relative to estimated richness.
+
+```{r}
+completeness_vs_expected <-
+  completeness_df %>%
+  group_by(Sites, Sampler, duration) %>%
+  summarise(S_sampler = mean(S_sampler), .groups = "drop") %>%
+  left_join(inext_estimates) %>%
+  mutate(
+    fraction_of_estimated = S_sampler / S_estimated,
+    taxon = "Fungi"
+  )
+```
+
+Plot observed vs estimated richness.
+
+```{r}
+completeness_vs_expected %>%
+  ggplot(aes(x = Sampler, y = fraction_of_estimated, fill = duration)) +
+  geom_boxplot() +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Sampler", y = "Fraction of estimated site richness", fill = "Duration") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red")
 ```
 
 Export completeness data.
 
 ```{r}
-write_tsv(completeness_df, here("Data", "Fungi", "out_intermediate", "Fungi_completeness.tsv"))
+completeness_export <-
+  completeness_df %>%
+  left_join(
+    completeness_vs_expected %>%
+      select(Sites, Sampler, duration, S_estimated, fraction_of_estimated)
+  )
+
+write_tsv(completeness_export, here("Data", "Fungi", "out_intermediate", "Fungi_completeness.tsv"))
 ```
 
 # Richness correlation across sites

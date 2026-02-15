@@ -1,0 +1,1021 @@
+---
+title: "Plant data analysis"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(here)
+library(readr)
+library(ggplot2)
+library(googlesheets4)
+library(vegan)
+library(readxl)
+library(eulerr)
+library(phyloseq)
+library(forcats)
+library(corrplot)
+library(rgbif)
+```
+
+#load metadata
+
+```{r}
+primer <- "Plants"
+
+#load metadata
+Meta <- read_xlsx(here("Data", "sampler_comp_meta.xlsx"), sheet = "Sample_data_corr") %>% 
+  select(Sample_names, Sites, Sampler, duration, Type)
+
+# get plate layout
+Plates <- read_xlsx(here("Data", "sampler_comp_meta.xlsx"), sheet = "Plates", range = "A26:M44") %>% 
+  dplyr::rename(row = 1) %>% 
+  filter(row %in% LETTERS[1:8]) %>% 
+  mutate(Plate = rep(c("Plate_1", "Plate_2"), each = 8)) %>% 
+  pivot_longer(!one_of(c("row", "Plate")), names_to = "col", values_to = "Sample_names") %>% 
+  select(Plate, row, col, Sample_names) %>% 
+  filter(!is.na(Sample_names)) %>% 
+  left_join(Meta) %>% 
+  mutate(Type = case_when(grepl("PCR", Sample_names) ~ "PCR_control",
+                          TRUE ~ Type)) %>% 
+  mutate(col = as.character(as.integer(col)))
+
+# get plate layout of barcodes 
+Barcodes <- 
+  read_xlsx(here("Data", "Barcodes_4_plates.xlsx")) %>% 
+  mutate(Plate = rep(rep(paste("Plate", 1:4, sep = "_"), each = 96),2)) %>% 
+  filter(Plate %in% c("Plate_1", "Plate_2")) %>% 
+  dplyr::rename(Index = 1) %>% 
+  select(Index, Plate) %>% 
+  filter(grepl("_i5$", Index)) %>% 
+  mutate(Index = gsub("(.+?)_i5", "\\1", Index)) %>% 
+  group_by(Plate) %>% 
+  mutate(row = rep(LETTERS[1:8], each = 12)) %>% 
+  mutate(col = as.character(rep(1:12, 8))) 
+
+#match plate_layout and metadata
+Meta <- 
+Plates %>% 
+  left_join(Barcodes)
+```
+
+#load data
+
+We sequenced both plants and fungi with ITS primers and both primer pairs pick up plants. We merge data from both primers, adding all sequences from the fungal dataset where we have a taxonomic assignemnt at least down to genus level. 
+
+##Plant primer seq
+```{r}
+Plants_ASV <- read_tsv(here("Data", primer, "out_final", "Plants_ASV_glom.txt")) %>% 
+  mutate(Sample = gsub(".+?(NGS.+)", "\\1", Sample)) %>% 
+  dplyr::rename(Index = Sample)
+
+Plants_tax <- read_tsv(here("Data", primer, "out_final", "Plants_taxa_blast_glom.txt"))
+
+#raw seqs, before merging and ITSx
+Plants_seq <- Biostrings::readDNAStringSet(here("Data", primer, "out_intermediate", paste(primer, "ASVs.fasta", sep = "_")), format = "fasta")
+```
+#Size distribution
+
+```{r}
+Plant_len <- 
+Plants_seq %>% 
+  width() %>% 
+  tibble(len = .) %>% 
+  mutate(seq = names(Plants_seq)) 
+
+Plant_len_seq <- 
+  Plant_len %>% 
+  group_by(len) %>% 
+  summarise(count_seq = n()) 
+
+Plant_len_reads <- 
+Plants_ASV %>% 
+  pivot_longer(-Index, names_to = "seq") %>% 
+  group_by(seq) %>% 
+  summarise(reads = sum(value)) %>% 
+  left_join(Plant_len) %>% 
+  group_by(len) %>% 
+  summarise(reads = sum(reads))
+
+  Plant_len_seq %>% 
+    left_join(Plant_len_reads) %>% 
+    filter(!is.na(reads)) %>% 
+    pivot_longer(-len, names_to = "var") %>% 
+    group_by(var) %>% 
+    mutate(value = value/sum(value)) %>%
+  ggplot(aes(x = len, y = value, fill = var))+
+  geom_bar(stat = "identity", position = position_dodge())
+
+```
+
+
+##Fungi primer seq
+```{r}
+Plants_Fungi_ASV <- read_tsv(here("Data", primer, "out_final", 
+                                  "Plants_ASV_glom_fungi.txt")) %>% 
+  mutate(Sample = gsub(".+?(NGS.+)", "\\1", Sample)) %>% 
+  dplyr::rename(Index = Sample)
+
+Plants_Fungi_tax <- read_tsv(here("Data", primer, "out_final", "Plants_taxa_blast_glom_fungi.txt"))
+```
+
+##compare data
+
+```{r}
+ITS_venn <- 
+bind_rows(Plants_tax, Plants_Fungi_tax) %>% 
+  filter(!is.na(genus)) %>% 
+  select(phylum, class, genus) %>% 
+  distinct() %>% 
+  mutate(Plant_ITS = genus %in% Plants_tax$genus,
+         Fungi_ITS = genus %in% Plants_Fungi_tax$genus) %>%
+  select(-class, -genus) %>% 
+  euler(shape = "ellipse", by = list(phylum)) 
+
+#sampler_venn
+eulerr_options(quantities = list(fontsize= 8, col = "darkred", cex = 1.2, fontfamily = "sans"))
+
+plot(ITS_venn, legend = TRUE, quantities = TRUE)
+  
+```
+
+## shrubby species
+
+```{r}
+library(rvest)
+
+# URL der Wikipedia-Seite
+url <- "https://de.wikipedia.org/wiki/Liste_von_Geh%C3%B6lzen_in_der_Schweiz"
+
+# HTML-Seite abrufen
+page <- read_html(url)
+
+# Tabellen extrahieren
+tables <- page %>% html_table(fill = TRUE)
+
+# Die richtige Tabelle auswählen (falls mehrere vorhanden sind)
+Woody_species <- tables[[1]]
+
+Woody_species_ch <- 
+  Woody_species %>% 
+  dplyr::rename(species = `Name Lateinisch`) %>% 
+  select(species) %>% 
+  rgbif::name_backbone_checklist() %>% 
+  select(genus, species)
+
+bind_rows(Plants_tax, Plants_Fungi_tax) %>% 
+  filter(phylum == "Tracheophyta") %>% 
+  select(family, genus, species) %>% 
+  distinct() %>% 
+  filter(!is.na(genus)) %>% nrow
+  mutate(genus_woody = genus %in% Woody_species_ch$genus,
+         species_woody = species %in% Woody_species_ch$species) %>% 
+  filter(genus_woody | species_woody) %>% 
+  mutate(species_woody = case_when(grepl("sp.", species) ~ NA,
+                                   TRUE ~ species_woody)) %>% 
+  filter(species_woody | is.na(species_woody))
+  
+```
+
+
+## join data
+
+```{r}
+InfoFlora_gbif <- read_tsv(here("Data", primer, "in_files", "InfoFlora_gbif.txt"))
+Plants_ASV
+
+ASV_sp_f <- 
+  ASV_sp_f %>% 
+  select(Sample, Fungi_taxa_80_glom$seq) %>% 
+  dplyr::rename_with(.cols = !one_of("Sample"), .fn = ~paste(.,"f", sep = "_"))
+
+Fungi_taxa_80_glom <- 
+  Fungi_taxa_80_glom %>% 
+  mutate(seq = paste(seq, "f", sep = "_"))
+
+ASV_sp_j <- 
+  ASV_sp %>%
+  select("Sample", Plants_taxa_80_glom$seq) %>% 
+  left_join(ASV_sp_f) %>% 
+  mutate(across(everything(), ~ifelse(is.na(.),0,.)))
+
+ASV_sp_j_m <- as.matrix(ASV_sp_j[,-1])
+rownames(ASV_sp_j_m) <- ASV_sp_j$Sample
+
+Plant_taxa_j <- bind_rows(Plants_taxa_80_glom, Fungi_taxa_80_glom)
+
+Plant_tax_j_m <- as.matrix(Plant_taxa_j[,-1])
+rownames(Plant_tax_j_m) <- Plant_taxa_j$seq
+
+ps_obj <- phyloseq(otu_table(ASV_sp_j_m, taxa_are_rows = FALSE),
+                   tax_table(Plant_tax_j_m))
+
+ps_glom <- tax_glom(ps_obj, taxrank="species", NArm=FALSE)
+
+Plant_taxa_j <- 
+  as.data.frame(tax_table(ps_glom)) %>% 
+  tibble::rownames_to_column("seq")
+
+ASV_sp_j <- 
+  as.data.frame(otu_table(ps_glom)) %>% 
+  tibble::rownames_to_column("Sample")
+```
+
+# clean data
+```{r}
+ASV_tax_long <- 
+ASV_sp_j %>% 
+  pivot_longer(-Sample, names_to = "seq", values_to = "reads") %>% 
+  dplyr::rename(Index = Sample) %>% 
+  left_join(Meta) %>% 
+  left_join(Plant_taxa_j)
+```
+
+```{r}
+unknown_Index <- ASV_sp_j$Sample[!ASV_sp_j$Sample %in% Meta$Index]
+
+ASV_tax_long %>% 
+  filter(Index %in% unknown_Index) %>% 
+  filter(reads > 0) 
+```
+
+## reads
+
+```{r}
+ASV_tax_long %>% 
+  group_by(Sample_names) %>% 
+  summarise(reads = sum(reads)) %>% 
+  left_join(Meta) %>% 
+  mutate(Sampler = ifelse(is.na(Sampler), Type, Sampler)) %>% 
+  filter(!is.na(Type)) %>% 
+  mutate(Sampler = fct_relevel(Sampler, c("PCR_control", "Extraction Blanks"), after = Inf)) %>% 
+  ggplot(aes(x = Sampler, y= reads, colour = Type))+
+  geom_point(position = position_dodge(width = 0.5))+
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_color_brewer(palette = "Set1")
+  
+```
+
+```{r}
+ASV_tax_long %>% 
+  group_by(Sample_names) %>% 
+  mutate(reads = ifelse(reads >= 50, reads, 0)) %>% 
+  summarise(n_seq = sum(reads>0)) %>% 
+  left_join(Meta) %>% 
+  mutate(Sampler = ifelse(is.na(Sampler), Type, Sampler)) %>% 
+  filter(!is.na(Type)) %>% 
+  mutate(Sampler = fct_relevel(Sampler, c("PCR_control", "Extraction Blanks"), after = Inf)) %>% 
+  ggplot(aes(x = Sampler, y= n_seq, colour = Type))+
+  geom_point(position = position_dodge(width = 0.5))+
+  #scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_color_brewer(palette = "Set1")
+```
+```{r}
+ASV_tax_long %>% 
+  filter(grepl("BLANK", Sample_names)) %>% 
+  group_by(Sample_names) %>% 
+  summarise(n_seq = sum(reads > 0), reads = sum(reads))
+
+ASV_tax_long %>% 
+  filter(grepl("control", Type)) %>% 
+#  filter(grepl("Extr|PCR", Type)) %>% 
+  group_by(Sampler, Type, seq) %>% 
+  summarise(reads = max(reads)) %>% 
+  filter(reads > 0) %>% 
+  arrange(Sampler, desc(reads)) %>% 
+  left_join(Plant_taxa_j) #%>% 
+  group_by(Sampler) %>% 
+  summarise(n = n())
+  
+```
+
+```{r}
+filter_df <- 
+tibble(filter_thresh = c(0,2^(1:12)))
+
+filter_df$n_seq <- 
+lapply(filter_df$filter_thresh, function(x) {
+  ASV_tax_long %>% 
+    filter(reads > x) %>% 
+    pull(seq) %>% unique %>% length()
+}) %>% unlist() %>% as.numeric()
+
+filter_df %>% 
+ggplot(aes(x = filter_thresh,
+           y = n_seq))+
+  geom_point()+
+  geom_text(aes(label = filter_thresh), hjust = -1)+
+ # scale_y_log10()+
+  labs(title = "Unique OTUs vs Sample_wide read threshold",
+       x = "OTU read threshold (in each Sample)",
+       y = "unique OTUs")
+```
+
+
+
+```{r}
+top_OTU <- 
+  ASV_tax_long %>% 
+  arrange(Index, desc(reads)) %>% 
+  group_by(Index) %>% 
+  dplyr::slice(1:3) %>% 
+  pull(seq) %>% 
+  unique()
+
+prev_thresh <- 
+lapply(c(0,2^(1:12)), function(x){
+  
+  ASV_tax_long %>% 
+  filter(seq %in% top_OTU) %>% 
+  filter(reads > x) %>% 
+  group_by(seq) %>% 
+  summarise(prev = n())
+  
+}) %>% bind_rows(.id = "thresh") 
+
+prev_thresh %>% 
+  mutate(thresh = c(0,2^(1:12))[as.numeric(thresh)]) %>% 
+  group_by(seq) %>% 
+  mutate(prev = prev/max(prev)*100) %>% 
+  ggplot(aes(x = thresh, y = prev, group = seq))+
+  geom_line()
+
+prev_thresh %>% 
+  filter(thresh == 1) %>% 
+  select(-thresh) %>% 
+  left_join(Plants_taxa_80_glom)
+```
+
+
+```{r}
+
+Plants_ASV <- 
+Plant_taxa_j %>% 
+  filter(phylum == "Tracheophyta") %>% 
+  pull(seq)
+
+ASV_sp_j <- ASV_sp_j[,colnames(ASV_sp_j) %in% c("Sample", Plants_ASV)]
+  
+```
+
+#prevalence
+```{r}
+apply(ASV_sp_j[,-1],2, function(x) sum(x >0) ) %>% 
+  data.frame(prev = .) %>% 
+  tibble::rownames_to_column(var = "seq") %>% 
+  left_join(Plants_taxa_80_glom) %>% 
+  arrange(desc(prev)) %>% 
+  mutate(rank = 1:n()) %>% 
+  #filter(order == "Boletales") #%>% 
+  ggplot(aes(x = rank, y = prev))+
+    geom_point()
+```
+
+
+
+```{r}
+#per sample read threshold
+
+thresh <- 1
+
+ASV_sp_t <- 
+  ASV_sp_j %>% 
+  mutate(across(where(is.numeric), function(x){ifelse(x >= thresh, x, 0)}))
+  
+```
+
+
+
+## Species richness
+
+
+```{r}
+
+rar_curve <- 
+ASV_sp_t %>% 
+  #select({filter(Plants_taxa_80_glom, phylum == "Basidiomycota") %>% pull(seq)}) %>% 
+  select(-Sample) %>% 
+  as.matrix %>% 
+  `rownames<-`(ASV_sp$Sample) %>% 
+  `[`(rowSums(.) > 0,) %>% 
+  rarecurve(x = .,step = 1000, tidy = TRUE)
+
+rar_curve %>% left_join(Meta, by = c("Site" = "Index")) %>% 
+  filter(grepl("active|passive", Type)) %>% 
+  ggplot(aes(x = Sample, y = Species, group = Site, colour = duration)) +
+  geom_line()+
+  facet_wrap(~Sampler)
+
+```
+
+
+
+
+```{r}
+
+rar <- 
+ASV_sp_t %>% 
+  select(-Sample) %>% 
+  as.matrix %>% 
+  `rownames<-`(ASV_sp$Sample) %>% 
+  `[`(rowSums(.) > 0,) %>% 
+  rarefy(x = .,sample = 0.5e5) 
+
+```
+
+```{r}
+
+S_df <- 
+rar %>% 
+  data.frame(S = .) %>% 
+  dplyr::add_rownames(var = "Index") %>% 
+  left_join(Meta) %>% 
+  filter(Type %in% c("active", "passive")) %>% 
+  filter(Sampler != "Drone") %>% 
+  mutate(Sampler = factor(Sampler, levels= unique(.$Sampler)[c(8,1,3,2,5,6,4,7)])) 
+
+S_df %>% 
+  ggplot(aes(y = S, x = duration,  colour = Sites))+
+  facet_grid(~Sampler, scales = "free_x")+
+  geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
+  geom_point()+
+  theme_minimal()+
+  scale_color_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+        legend.position = "bottom")
+```
+
+export richness
+```{r}
+S_df %>% 
+  mutate(taxon = "Plants") %>% 
+  write_tsv(here("Data", "Plant_richness.txt"))
+```
+
+### richness vs air volume
+
+```{r}
+flow_rate <- 
+  Meta %>% 
+  filter(Type == "active" & Sampler != "Drone") %>% 
+  select(Sampler, duration) %>% 
+  distinct() %>% 
+  mutate(flow = case_when(
+    Sampler == "Hepa" ~ 60,
+    Sampler == "Kärcher" ~ 3000,
+    Sampler == "Sass" ~ 300,
+    Sampler == "Coriolis" ~ 300,
+    Sampler == "Electrostatic" ~ 10,
+    Sampler == "Burkhart" ~ 16.5,
+  )) %>% 
+  mutate(air_vol = case_when(
+    duration == "30 min" ~ flow*30,
+    duration == "5 hours" ~ flow*5*60
+  ))
+```
+
+
+```{r}
+S_df %>% 
+  left_join(flow_rate) %>% 
+  filter(Type == "active" & Sampler != "Drone") %>% 
+  ggplot(aes(x = air_vol, y = S, colour = Sampler, shape = duration))+
+  #geom_line(aes(group = Sites), size = 0.2, colour = "grey")+
+  geom_point()+
+ # facet_grid(~duration)+
+  geom_smooth(aes(group = 1), method = "lm", colour = "darkblue", size = 0.2)+
+#  geom_smooth(aes(group = duration), method = "lm", colour = "darkred", size = 0.2, se = F)+
+  scale_x_log10()+
+  scale_color_brewer(palette = "Set1")+
+  theme_bw()
+  
+
+```
+
+### richness corr
+
+```{r}
+Cor_mat <- 
+S_df %>% 
+  left_join(flow_rate) %>% 
+  filter(Type %in% c("active", "passive")) %>% 
+  mutate(Sampler = paste(Sampler, duration)) %>% 
+  arrange(Type, duration, desc(flow)) %>% 
+  #filter(duration == "5 hours") %>% 
+  select(Sites, Sampler, S) %>% 
+  pivot_wider(names_from = Sampler, values_from = S) %>% 
+  select(-Sites) %>% 
+  cor(method = "pearson") 
+
+
+
+{  
+Cor_mat %>% 
+  corrplot(type = "lower",diag = F,tl.col = "black", tl.cex = 0.8, method = "ellipse",
+           na.label = "square", na.label.col = "lightgrey")
+  
+rect(xleft = 0.5, ybottom = 8.5, xright = 5.5, ytop = 13.5, density = NULL, angle = 45,
+     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
+
+rect(xleft = 6.5, ybottom = 2.5, xright = 11.5, ytop = 7.5, density = NULL, angle = 45,
+     col = NULL, border = "darkred", lty = par("lty"), lwd = par("lwd"))
+
+}
+         
+```
+### sample completeness
+```{r}
+ASV_sample_based <- 
+  ASV_tax_long %>% 
+  group_by(Index, duration, Sites, Sampler, seq) %>% 
+  filter(Type %in% c("active", "passive")) %>% 
+  filter(Sampler != "Drone") %>% 
+  summarise(reads = sum(reads)) %>% 
+  mutate(reads = ifelse(reads > 0,1,0)) %>% 
+  pivot_wider(names_from = seq, values_from = reads)
+  
+site_rar_df <- 
+ASV_sample_based %>% 
+  split(~Sampler+duration) 
+
+site_rar_df <- 
+site_rar_df[unlist(lapply(site_rar_df, nrow))>0] %>% 
+  lapply(., function(x){
+    
+  if(nrow(x) > 0){res <- vegan::specaccum(x[,-c(1:4)])}
+    
+    resdf = tibble(sites = res$sites,
+                   Richness = res$richness,
+                   sd = res$sd)
+    
+    return(resdf)
+  })
+
+site_rar_df %>% 
+  bind_rows(.id = "var") %>% 
+  tidyr::separate_wider_delim(col = var, names = c("Sampler", "duration"), delim = ".") %>% 
+  ggplot(aes(x = sites, y = Richness, fill = duration))+
+  geom_line()+
+  geom_ribbon(aes(ymin = Richness - sd, ymax = Richness + sd), colouor = NULL, alpha = 0.5)+
+  facet_wrap(.~Sampler)+
+  scale_x_continuous(breaks = seq(1,8,1))
+```
+
+## Species comp
+
+```{r}
+ASV_sample <- 
+ASV_sp_j %>% 
+  filter(Sample != Meta[Meta$Sample_names == "1DB30_1",]$Index) %>% 
+  filter(Sample %in% {filter(Meta, Type %in% c("active", "passive")) %>% pull(Index)}) %>% 
+  filter(rowSums(.[,-1])>0) %>% 
+  select(where(function(x){is.character(x) || sum(x) > 1}))
+
+ASV_dist <- vegdist(ASV_sample[,-1], method = "bray", binary = T)
+
+NMDS <- metaMDS(ASV_dist) 
+
+NMDS$points %>% 
+  as_tibble() %>% 
+  mutate(Index = ASV_sample$Sample) %>% 
+  left_join(Meta) %>% 
+#  filter(MDS1 < 100) %>% 
+  ggplot(aes(x = MDS1, y = MDS2, colour = Sampler))+
+  geom_point()+
+  facet_wrap(~duration)
+  
+```
+```{r}
+adonis2(ASV_dist~ Sampler + Sites + duration, 
+        data = Meta[Meta$Index %in% ASV_sample$Sample,],
+        by = "margin")
+
+betadisper(ASV_dist, group = Meta[Meta$Index %in% ASV_sample$Sample,]$Sites) %>% 
+  anova()
+
+betadisper(ASV_dist, group = Meta[Meta$Index %in% ASV_sample$Sample,]$Sampler) %>% 
+  anova()
+
+betadisper(ASV_dist, group = Meta[Meta$Index %in% ASV_sample$Sample,]$duration) %>% 
+  anova()
+```
+
+### similarity ranking
+
+```{r}
+ASV_dist_M <- as.matrix(ASV_dist)
+
+dimnames(ASV_dist_M) <- 
+  list(ASV_sample$Sample, ASV_sample$Sample) 
+
+diag(ASV_dist_M) <- NA
+
+Meta_comb1 <- 
+  Meta %>% 
+  mutate(comb1 = paste(Sampler, duration, Sites)) %>% 
+  select(Index, comb1)
+
+Meta_comb2 <- 
+  Meta %>% 
+  mutate(comb2 = paste(Sampler, duration, Sites)) %>% 
+  select(Index, comb2) %>% 
+  dplyr::rename(Index2 = Index)
+
+ASV_dist_df <-   
+ASV_dist_M %>% 
+  data.frame() %>% 
+  tibble::rownames_to_column(var = "Index") %>% 
+  pivot_longer(-Index, names_to = "Index2") %>% 
+  filter(!is.na(value)) %>% 
+  left_join(Meta_comb1) %>% 
+  left_join(Meta_comb2) 
+
+ASV_dist_cor <- 
+ASV_dist_df %>% 
+  filter(!grepl("Drone", comb1) & !grepl("Drone", comb2)) %>%
+  mutate(site_comb = paste(gsub(".+\\s(\\w+)$", "\\1", comb1),
+                           gsub(".+\\s(\\w+)$", "\\1", comb2),
+                           sep = "_")) %>% 
+  mutate(Sampler1 = gsub("(.+)\\s\\w+$", "\\1", comb1),
+         Sampler2 = gsub("(.+)\\s\\w+$", "\\1", comb2)) %>% 
+  filter(Sampler1 == Sampler2) %>% 
+  select(value, site_comb, Sampler1) %>% 
+#  group_by(site_comb, Sampler1) %>% 
+#  filter(n() > 1)
+  pivot_wider(names_from = Sampler1, values_from = value) %>% 
+  select(-site_comb) %>% 
+  distinct() %>% 
+  select(rownames(Cor_mat)) %>% 
+  cor(method = "pearson") %>% 
+  #cor(method = "kendall") %>% 
+  {.}
+                              
+ASV_dist_cor %>% 
+  corrplot(type = "lower",diag = F,tl.col = "black", tl.cex = 0.8, method = "ellipse",
+           na.label = "square", na.label.col = "white")
+
+```
+
+## Venn diagramm
+```{r}
+sampler_venn <- 
+ASV_tax_long %>% 
+  filter(Sampler != "Drone") %>% 
+  filter(duration %in% c("30 min", "5 hours")) %>% 
+ # filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
+  group_by(Sampler, duration, seq) %>% 
+  summarise(reads = sum(reads)) %>% 
+  mutate(reads = reads > 0) %>% 
+  pivot_wider(names_from = duration, values_from = reads) %>% 
+  select(-seq) %>% 
+  euler(shape = "ellipse", by = list(Sampler)) 
+
+#sampler_venn
+eulerr_options(quantities = list(fontsize= 8, col = "darkred", cex = 1.2, fontfamily = "sans"))
+
+plot(sampler_venn, legend = TRUE, quantities = TRUE)
+```
+
+
+```{r}
+active <- 
+ASV_tax_long %>% 
+  filter(Sampler != "Drone") %>% 
+  filter(duration %in% c("5 hours")) %>% 
+  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
+  group_by(Type, Sampler, seq) %>% 
+  summarise(reads = sum(reads)) %>% 
+  mutate(reads = reads > 0) 
+
+passive <- 
+  ASV_tax_long %>% 
+  filter(Sampler != "Drone") %>% 
+  filter(duration %in% c("2 weeks")) %>% 
+  group_by(Type, Sampler, seq) %>% 
+  summarise(reads = sum(reads)) %>% 
+  mutate(reads = reads > 0) 
+
+comp_df <- active %>% mutate(comp = "") %>% dplyr::slice(0)
+
+for(i in unique(active$Sampler)){
+  
+  comp_df <- 
+  active %>% 
+    filter(Sampler == i) %>% 
+    bind_rows(passive) %>% 
+    mutate(comp = i) %>% 
+    bind_rows(comp_df, .)
+
+  
+}
+
+sampler_venn <- 
+comp_df %>% 
+  group_by(comp) %>% 
+  mutate(Sampler = case_when(Type == "active" ~ "active",
+                             TRUE ~ Sampler)) %>% 
+  select(-Type) %>% 
+  pivot_wider(names_from = Sampler, values_from = reads) %>% 
+  select(-seq) %>% 
+  euler(shape = "ellipse", by = list(comp)) 
+
+sampler_venn
+
+eulerr_options(quantities = list(fontsize= 8))
+
+plot(sampler_venn, legend = TRUE, quantities = TRUE)
+```
+```{r}
+sampler_venn <- 
+ASV_tax_long %>% 
+  filter(Sampler != "Drone") %>% 
+  filter(duration == "5 hours") %>% 
+  filter(Sampler %in% c("Kärcher", "Sass", "Coriolis", "Hepa")) %>% 
+  group_by(Sampler, seq) %>% 
+  summarise(reads = sum(reads)) %>% 
+  mutate(reads = reads > 0) %>% 
+  pivot_wider(names_from = Sampler, values_from = reads) %>% 
+  select(-seq) %>% 
+  euler(shape = "ellipse") 
+
+eulerr_options(quantities = list(fontsize= 10, col = "black"))
+
+plot(sampler_venn, legend = TRUE, quantities = TRUE)
+```
+
+# comparision to species list
+
+```{r}
+Beaver_plants <- read_xlsx(here("Data", "data_vegetation.xlsx"), sheet = "pivot_data")
+
+Beaver_plant_table <- 
+  select(Beaver_plants, c(1,57:438)) %>% 
+  group_by(Site) %>% 
+  mutate(across(everything(), ~ifelse(is.na(.), 0, .))) %>% 
+  summarise(across(everything(), sum))
+  
+Beaver_plant_meta <- select(Beaver_plants, 1:56) %>% 
+  dplyr::relocate(Name_Place_number_merged, .before = NULL)
+
+Beaver_plants_tax <- tibble(species = colnames(Beaver_plant_table)[-1])
+
+Beaver_plants_gbif <- 
+rgbif::name_backbone_checklist(Beaver_plants_tax, kingdom = "Plantae")
+
+Beaver_plants_gbif <- 
+Beaver_plants_gbif %>% 
+  select(verbatim_name, kingdom, phylum, class, order, family, genus, species)
+```
+
+
+```{r}
+
+# Assuming your dataframe is named 'df' and contains columns 'longitude' and 'latitude'
+# Create an sf object with WGS 84 coordinates
+sf_points <- 
+  Beaver_plant_meta %>% 
+  rename(latitude = "WGS 84 (GPS) Latitude",
+         longitude = "WGS 84 (GPS) Longitude") %>% 
+  select(Site, latitude, longitude) %>% 
+  distinct() %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+
+leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(data = sf_points,
+                   radius = 5,
+                   color = "blue",
+                   fill = TRUE,
+                   fillOpacity = 0.7,
+                   label = ~Site)
+matchsites <- 
+  tibble(Sites = c("Talent", "Coruz", "Haslibach", "Leugene",
+           "Gaebelbach", "Weierbach", "Riedgraben", "Duebendorf"),
+          beaver = c( "Talent", "Cruoz", "Haslibach", "Leugene",
+                     "Gäbelbach", "Weiherbach", "Riedgrabe", "Chriesbach")
+         )
+```
+
+
+```{r}
+Beaver_detect <- 
+Beaver_plant_table %>% 
+  filter(Site %in% matchsites$beaver) %>% 
+  select(-Site) %>% 
+  pivot_longer(everything(), names_to = "verbatim_name", values_to = "abund") %>% 
+  group_by(verbatim_name) %>% 
+  summarise(abund = sum(abund > 0, na.rm = TRUE)) %>% 
+  filter(abund > 0) %>% 
+  left_join(Beaver_plants_gbif) %>% 
+  group_by(phylum, class, order, family, genus, species) %>% 
+  summarise(abund = sum(abund)) %>% 
+  arrange(desc(abund))
+
+sum(unique(Plant_taxa_j$genus) %in% Beaver_detect$genus) / length(unique(Beaver_detect$genus)) * 100
+
+sum(unique(Plant_taxa_j$species) %in% Beaver_detect$species) / length(unique(Beaver_detect$species)) * 100
+```
+
+
+```{r}
+Beaver_long <- 
+Beaver_plant_table %>% 
+  filter(Site %in% matchsites$beaver) %>% 
+  pivot_longer(-Site, names_to = "verbatim_name", values_to = "abund") %>% 
+  filter(abund > 0) %>% 
+  left_join(Beaver_plants_gbif) %>% 
+  select(-verbatim_name) %>% 
+  group_by(Site, phylum, class, order, family, genus) %>% 
+  summarise(abund = sum(abund)) %>% 
+  mutate(method = "Survey")
+
+Plant_comp_long <- 
+ASV_tax_long %>% 
+  group_by(Sites, phylum, class, order, family, genus) %>% 
+  summarise(abund = sum(reads)) %>% 
+  filter(abund > 0) %>%  #abundance threshold necessary
+  left_join(matchsites) %>% 
+  rename(Site = beaver) %>% 
+  ungroup() %>% 
+  select(-Sites) %>% 
+  mutate(method = "eDNA") %>% 
+  filter(!is.na(Site))
+
+p_p <-  
+Beaver_long %>% 
+  bind_rows(Plant_comp_long) %>% 
+  filter(phylum == "Tracheophyta") %>% 
+  arrange(class, order, family, genus) %>% 
+  mutate(genus = factor(genus, levels = unique(genus))) %>% 
+  group_by(method) %>% 
+  mutate(abund = abund / max(abund)*100) %>% 
+  ggplot(aes(x = method, y = genus, colour = method, size = abund))+
+  geom_point(shape = 21)+
+  facet_nested(class + order~Site, scales = "free", space = "free", nest_line = TRUE)+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_colour_brewer(palette = "Set1")+
+  theme(
+    strip.text.y.right = element_text(angle = 0, size = 8),
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+   # plot.title = element_text(size = 15, face = "bold"),
+    strip.placement = "outside",
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 8),
+    legend.position = "bottom",
+   strip.background = element_blank(),
+        ggh4x.facet.nestline = element_line(colour = "darkblue")
+   # panel.grid.major.y = element_blank(),
+    )
+
+p_p
+ggsave(here("Figures", "Plant_list_comp.jpg"), width = 12, height = 18)
+```
+
+```{r}
+eulerr_options(quantities = list(fontsize= 8, col = "darkred", cex = 1.2, fontfamily = "sans"))
+
+{
+par(mfrow = c(2,4))
+
+Beaver_long %>% 
+  bind_rows(Plant_comp_long) %>% 
+  filter(phylum == "Tracheophyta") %>% 
+  mutate(abund = abund > 0) %>% 
+  ungroup() %>% 
+  select(Site, genus, method, abund) %>% 
+  pivot_wider(names_from = method, values_from = abund, values_fill = FALSE) %>% 
+  select(-genus) %>% 
+  euler(shape = "ellipse", by = list(Site)) %>% 
+  plot(., legend = TRUE, quantities = TRUE)
+}
+
+
+```
+
+
+
+```{r}
+all_tax <- Beaver_plants_gbif %>% 
+  select(phylum, class, order, family, genus, species) %>% 
+  bind_rows(Plant_taxa_j) %>% 
+  select(-seq)
+  
+plants_comp <- 
+all_tax %>% 
+  select(-species) %>% 
+  distinct() %>% 
+mutate(ITS_plants = genus %in% Plants_taxa_80_glom$genus,
+       ITS_fungi = genus %in% Fungi_taxa_80_glom$genus,
+       Survey = genus %in% Beaver_detect$genus)
+
+Venn_genus_p <- 
+plants_comp %>% 
+  select(-class, -order, -family, -genus) %>% 
+  euler(shape = "ellipse", by = list(phylum)) 
+
+eulerr_options(quantities = list(fontsize= 8, col = "darkred", cex = 1.2, fontfamily = "sans"))
+
+plot(Venn_genus_p, legend = TRUE, quantities = TRUE)
+```
+
+```{r}
+plants_comp %>% 
+  filter(class == "Liliopsida") %>% 
+  select(-class, -phylum, -family, -genus) %>% 
+  euler(shape = "ellipse", by = list(order)) %>% 
+  plot(legend = TRUE, quantities = TRUE)
+
+plants_comp %>% 
+  filter(phylum == "Tracheophyta") %>% 
+  group_by(phylum, class, order) %>% 
+  summarise(ITS_plants = sum(ITS_plants), 
+            ITS_fungi = sum(ITS_fungi),
+            Survey = sum(Survey))
+```
+
+
+# comp species list
+
+species list of vascular plants for Switzerland
+
+https://www.infoflora.ch/de/flora/taxonomie.html#checklist
+
+```{r}
+InfoFlora <- read_xlsx(here("Data", "Checklist_2017_simple_version_20230503.xlsx"), skip = 5)
+
+InfoFlora <- 
+  InfoFlora %>% 
+  mutate(name = `Nom du taxon`,
+         family = Famille)
+
+InfoFlora_gbif <- 
+  name_backbone_checklist(InfoFlora)
+
+InfoFlora_gbif <-
+  InfoFlora_gbif %>% 
+  select(phylum, class, order, family, genus, species) %>% 
+  distinct()
+```
+There are 19 genera we detected which are not part of the Swiss flora. Most species seem to be ornamental plants and/or or food items (cashews, banana)
+
+```{r}
+Plant_taxa_j %>% 
+  filter(phylum == "Tracheophyta") %>% 
+  filter(!genus %in% InfoFlora_gbif$genus)
+
+seqs_p <- readDNAStringSet(here("Data","AVITI", "Plants",  "ASV_swarm.fasta"))
+seqs_f <- readDNAStringSet(here("Data","AVITI", "Fungi", "ASV_swarm.fasta"))
+names(seqs_f) <- paste(names(seqs_f), "_f", sep = "")
+
+seq_pf <- c(seqs_p, seqs_f)
+seq_pf <- seq_pf[names(seq_pf) %in% Plant_taxa_j$seq]
+```
+
+##invasives
+
+```{r}
+invasives_ch <- read_xlsx(here("Data", "liste-inv-neoph-ch-2021-d-f-i_Update032024.xlsx"), skip = 4)
+
+invasives_ch_gbif <- 
+  invasives_ch %>% 
+  rename(name = 2) %>% 
+    select(name) %>% 
+    name_backbone_checklist() %>% 
+    select(phylum, class, order, family, genus, species) %>% 
+  mutate(rowid = 1:n()) %>% 
+  filter(!is.na(phylum))
+
+Plant_taxa_j %>% 
+  filter(species %in% invasives_ch_gbif$species)
+
+row_id <- 
+invasives_ch_gbif %>% 
+  filter(species %in% Plant_taxa_j$species) %>% 
+  pull(rowid)
+
+invasives_ch[row_id,] %>% 
+  select(2, 5,8) %>% 
+  rename(species = 1)
+```
+
+##alien
+
+```{r}
+alien_ch <- read_xlsx(here("Data", "liste-der-gebietsfremden-arten-der-ch.xlsx"), skip = 7)
+
+alien_gbif <- 
+  alien_ch %>% 
+  rename(name = 3) %>% 
+  select(name) %>% 
+  name_backbone_checklist() %>% 
+  select(kingdom, phylum, class, order, family, genus, species)
+
+Plant_taxa_j %>% 
+  filter(species %in% alien_gbif$species)
+
+
+```
+

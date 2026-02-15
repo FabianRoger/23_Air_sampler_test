@@ -206,13 +206,13 @@ Each Data_Analysis script follows this structure:
 8. **Species richness (S)**: observed S by sampler × duration × site. Faceted by Sampler, colored by Site, with duration on x-axis. Include GLM: `S ~ Sampler * duration + Sites` (or GLMM with `(1|Sites)` if appropriate). Report estimated richness and CIs. Include Burkhart comparison table (fold-differences)
 9. **Faith's PD**: same plot structure as S, using `picante::pd()`. Shown as parallel panel to S figure. (Placeholder until trees are built)
 10. **Richness vs air volume**: scatter of S vs log(air_vol) for active samplers + linear model fit. Report formal test
-11. **Sampling completeness**: fraction of pooled 5h community captured per sampler × duration. Pool all samplers at each site for 5h as "reference community," compute fraction detected by each sampler × duration combination. Directly answers "what fraction of the detectable community do you capture in 30 min vs 5 hours?"
+11. **Sampling completeness**: fraction of site community captured per sampler × duration. Reference = ALL species detected at a site (pool all samplers × all durations). Compute species-level overlap (not just richness ratio) - what fraction of reference species does each sampler × duration detect? Use `estimateD(datatype = "abundance", base = "size")` to estimate asymptotic richness per site from pooled data. Compare observed richness to estimated richness (`fraction_of_estimated = S_sampler / S_estimated`). Export both metrics: `fraction_detected` (vs pooled observed) and `fraction_of_estimated` (vs extrapolated richness)
 12. **Richness correlation across sites**: corrplot of S across sampler × duration combinations. Shows whether samplers agree on which sites are species-rich
 13. **Richness by taxonomic subgroup** (group-specific): repeat richness analysis for major subdivisions to test whether sampler effects differ by subgroup. See group-specific details below
 14. **Nestedness vs turnover (betapart)**: pairwise Sørensen decomposition across sampler pairs, averaged across sites. Shows whether low-richness samplers detect a subset of what high-richness samplers detect (nestedness) or genuinely different species (turnover). Display as matrix or grouped bar chart. Replaces the old NMDS + PERMANOVA section
 15. **Rank-abundance correlation**: Spearman correlation on relative abundance (or rank) across all shared OTUs between sampler × duration pairs. Display as corrplot. Shows whether samplers agree on which species are dominant. Replaces the old similarity ranking section
 16. **Venn/Euler**: one key comparison — 4 main active samplers (Kärcher, Coriolis, Sass, Hepa) at 5 hours
-17. **iNEXT sensitivity (supplement)**: coverage-based rarefaction/extrapolation for q=0. Confirm sampler ranking matches observed S
+17. **iNEXT sensitivity (supplement)**: coverage-based rarefaction/extrapolation for q=0. Use `iNEXT()` (not `estimateD()` which is used in completeness) to generate full rarefaction curves. Confirm sampler ranking matches observed S under coverage standardization
 18. **Group-specific extras** (short — one figure max): see below
 19. **Export results for cross-group figures**: write TSV files to `Data/{Group}/out_intermediate/` for use in `Joined_Figures.Rmd`. See export spec below
 20. **Session info**
@@ -243,7 +243,7 @@ Each Data_Analysis script must export TSV files to `Data/{Group}/out_intermediat
 |------|----------|-------------|
 | `{Group}_richness.tsv` | Observed S (and Faith's PD when available) per sample | taxon, Index, Sites, Sampler, duration, S, PD |
 | `{Group}_contamination.tsv` | Contamination summary per sampler: n OTUs in field controls, n with ratio > 1, n with ratio > 10, total reads in controls | taxon, Sampler, n_OTUs_field, n_ratio_gt1, n_ratio_gt10, total_reads_field, n_OTUs_lab, n_ratio_gt1_lab |
-| `{Group}_completeness.tsv` | Fraction of pooled 5h reference community detected | taxon, Sites, Sampler, duration, fraction_detected, S_sampler, S_reference |
+| `{Group}_completeness.tsv` | Fraction of site community detected (species-level) | taxon, Sites, Sampler, duration, S_sampler, S_shared, S_reference, fraction_detected, S_estimated, fraction_of_estimated |
 | `{Group}_nestedness_turnover.tsv` | Betapart decomposition per sampler pair | taxon, Sampler1, Sampler2, duration, beta_sor, beta_sim (turnover), beta_sne (nestedness) |
 | `{Group}_rank_correlation.tsv` | Rank-abundance Spearman rho per sampler pair | taxon, Sampler1, Sampler2, rho, p_value |
 
