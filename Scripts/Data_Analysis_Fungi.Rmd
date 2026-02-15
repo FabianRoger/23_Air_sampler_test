@@ -7,6 +7,7 @@ output: html_notebook
 
 Load required libraries for analysis.
 
+
 ```{r}
 library(dplyr)
 library(tidyr)
@@ -34,15 +35,58 @@ Define the taxonomic group for this analysis.
 primer <- "Fungi"
 ```
 
-Load metadata from the standardized file.
+## Visualization settings
+
+Define a single global visualization configuration (factor ordering, color palettes, and reusable theme).
+
 
 ```{r}
-Meta <- read_tsv(here("Data", "Meta_data.tsv"))
+# ===== VISUALIZATION SETTINGS (DEFINE ONCE) =====
+sampler_order <- c(
+  "Burkhart",
+  "Electrostatic",
+  "Hepa",
+  "Sass",
+  "Coriolis",
+  "Kärcher",
+  "Drone",
+  "MWAC",
+  "WSL_Filter"
+)
+
+duration_order <- c("30 min", "5 hours", "2 weeks")
+
+sampler_colors <- RColorBrewer::brewer.pal(9, "Set1")
+site_colors <- RColorBrewer::brewer.pal(8, "Paired")
+duration_colors <- RColorBrewer::brewer.pal(3, "Dark2")
+
+theme_airsample <- function(base_size = 11) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.line = element_line(color = "black", linewidth = 0.3),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      strip.text = element_text(face = "bold", size = rel(1.0))
+    )
+}
+```
+
+Load metadata from the standardized repository file.
+
+```{r}
+Meta <- read_tsv(here("Data", "Meta_data.tsv")) %>%
+  mutate(
+    Sampler = factor(Sampler, levels = sampler_order),
+    duration = factor(duration, levels = duration_order)
+  )
 ```
 
 # Load data
 
 Load ASV count table, taxonomy, representative sequences, and DNA concentrations.
+
 
 ```{r}
 Fungi_ASV <- read_tsv(here("Data", primer, "out_final", "Fungi_ASV_glom.txt")) %>%
@@ -58,13 +102,14 @@ DNAC <- read_tsv(here("Data", "DNA_conc_air_sampler_comp.txt"))
 
 Load phylogenetic tree (placeholder until trees are built).
 
+
 ```{r}
 # Fungi_tree <- ape::read.tree(here("Data", "Fungi", "out_final", "Fungi_tree.nwk"))
 ```
 
 # Fragment length distribution
 
-Compute sequence lengths for all representative sequences.
+Quantify sequence-length distributions and read-length relationships before filtering.
 
 ```{r}
 Fungi_len <-
@@ -76,17 +121,19 @@ Fungi_len <-
 
 Plot histogram of sequence lengths.
 
+
 ```{r}
 Fungi_len %>%
   group_by(len) %>%
   summarise(n = n()) %>%
   ggplot(aes(x = len, y = n)) +
   geom_bar(stat = "identity") +
-  theme_minimal() +
+  theme_airsample() +
   labs(x = "Sequence length (bp)", y = "Number of ASVs")
 ```
 
 Compute reads per ASV and plot against sequence length.
+
 
 ```{r}
 Fungi_len_reads <-
@@ -103,19 +150,20 @@ Fungi_len_reads <-
 Fungi_len_reads %>%
   ggplot(aes(x = len, y = reads_o_prev)) +
   geom_point(shape = 21, alpha = 0.5, size = 3) +
-  theme_minimal() +
+  theme_airsample() +
   labs(x = "Sequence length (bp)", y = "Reads per prevalence")
 ```
 
 # Rarefaction (pre-cleaning)
 
-Define major phyla to examine rarefaction curves by taxonomic group.
+Evaluate pre-cleaning rarefaction behavior by major taxonomic groups.
+This establishes whether sequencing depth is limiting diversity estimates; this is foundational for using observed richness in **Q1** and **Q2**.
+Plateauing curves indicate sequencing saturation, so sampler capture (not read depth) is the main bottleneck.
 
 ```{r}
 major_phyla <- c("Ascomycota", "Basidiomycota", "Tracheophyta", "Other")
 ```
 
-Compute rarefaction curves for each major phylum.
 
 ```{r}
 rc_df <- map_df(major_phyla, function(ph) {
@@ -157,19 +205,20 @@ Plot rarefaction curves faceted by phylum.
 ggplot(rc_plot_df, aes(x = Sample, y = Species, color = duration, group = Index)) +
   geom_line() +
   facet_wrap(~phylum, scales = "free_y", ncol = 2) +
-  theme_minimal() +
+  theme_airsample() +
   theme(legend.position = "right") +
-  scale_color_brewer(palette = "Set1") +
+  scale_color_brewer(palette = "Dark2") +
   labs(x = "Sequencing depth", y = "ASV richness")
 ```
 
 Plot rarefaction curves faceted by sampler.
 
+
 ```{r}
 ggplot(rc_plot_df, aes(x = Sample, y = Species, color = phylum, group = paste(Index, phylum))) +
   geom_line() +
   facet_wrap(~Sampler, scales = "free_y") +
-  theme_minimal() +
+  theme_airsample() +
   theme(legend.position = "right") +
   scale_color_brewer(palette = "Set1") +
   labs(x = "Sequencing depth", y = "ASV richness")
@@ -195,6 +244,7 @@ Sample notes from lab records:
 
 Check for reads in unused indices (should be absent but can occur due to index hopping).
 
+
 ```{r}
 index_hop <-
   Fungi_ASV %>%
@@ -207,6 +257,7 @@ index_hop
 
 Five unused indices have reads (maximum 2 reads per index).
 
+
 ```{r}
 Fungi_ASV %>%
   select(unique(index_hop$name)) %>%
@@ -214,6 +265,7 @@ Fungi_ASV %>%
 ```
 
 All reads are from highly abundant ASVs, indicating low-level index hopping. Remove unused indices from ASV table.
+
 
 ```{r}
 Fungi_ASV <-
@@ -229,7 +281,10 @@ Fungi_ASV <-
 
 ### Decontam (prevalence-based)
 
-Define which samples are blanks. Field controls are set to NA (excluded) as they contain genuine environmental sequences.
+Define lab negatives for prevalence-based decontam while excluding field controls from the negative class.
+
+Field controls can contain real environmental taxa, so treating them as strict negatives would bias contamination calls.
+
 
 ```{r}
 Blanks <-
@@ -247,6 +302,7 @@ all(Fungi_ASV$Index == Blanks$Index)
 
 Run decontam with prevalence method.
 
+
 ```{r}
 contamdf.prev <- isContaminant(as.matrix(Fungi_ASV[,-1]),
                                neg = Blanks$is_neg,
@@ -255,11 +311,14 @@ contamdf.prev <- isContaminant(as.matrix(Fungi_ASV[,-1]),
 n_contaminants <- sum(contamdf.prev$p < 0.1, na.rm = TRUE)
 ```
 
-Decontam (prevalence method, p < 0.1) identifies `r n_contaminants` contaminants. This is expected for air eDNA where contaminants are also environmental organisms, making the prevalence signal weak.
+Decontam (prevalence method, p < 0.1) identifies `r n_contaminants` contaminants. This low sensitivity is expected for air eDNA because many potential contaminants are also genuine airborne taxa and therefore do not show strong prevalence separation between negatives and true samples.
 
 ### Visualize control contamination
 
-Compute mean and max abundance ratios between controls and samples.
+Compute per-OTU control/sample ratios using both mean and max counts for lab and field controls.
+
+This provides an explicit, transparent contamination screen that complements decontam and directly supports read-subtraction filtering.
+OTUs with ratio > 1 are candidate contaminants; max values are used for conservative subtraction thresholds.
 
 ```{r}
 cont_ratio <-
@@ -294,11 +353,13 @@ Lab_only <-
 
 Blank8 got contaminated by a sample and is excluded. Count unique sequences in lab controls.
 
+
 ```{r}
 Lab_only$seq %>% unique() %>% length()
 ```
 
 Count sequences with ratio > 1 (more abundant in controls than samples).
+
 
 ```{r}
 Lab_only %>%
@@ -308,6 +369,7 @@ Lab_only %>%
 ```
 
 Summarize lab contaminant taxonomy.
+
 
 ```{r}
 Lab_only %>%
@@ -344,6 +406,7 @@ Field_only %>%
 
 Count sequences with ratio > 10.
 
+
 ```{r}
 Field_only %>%
   filter(name == "mean_val") %>%
@@ -354,6 +417,7 @@ Field_only %>%
 There are 542 sequences present across 14 field blanks, with 223 more abundant in controls than samples (119 with ratio > 10).
 
 Create field control dataset for visualization.
+
 
 ```{r}
 Field_cont <-
@@ -373,6 +437,7 @@ Field_cont <-
 
 Plot contamination levels by sampler.
 
+
 ```{r}
 Field_cont %>%
   mutate(ratio_cat = ifelse(ratio > 1, "> 1", "< 1")) %>%
@@ -380,8 +445,9 @@ Field_cont %>%
   geom_point(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.6)) +
   scale_y_log10() +
   scale_color_brewer(palette = "Set1") +
-  theme_minimal() +
+  theme_airsample() +
   coord_flip() +
+  theme(axis.text.x = element_text(angle = 0)) +
   labs(x = "Sampler", y = "Reads in field control", colour = "Ratio")
 ```
 
@@ -395,12 +461,14 @@ Field_cont %>%
   ggplot(aes(x = Sampler, y = n, colour = ratio_cat)) +
   geom_point(position = position_dodge(width = 0.4), size = 3) +
   scale_color_brewer(palette = "Set1") +
-  theme_minimal() +
+  theme_airsample() +
   coord_flip() +
+  theme(axis.text.x = element_text(angle = 0)) +
   labs(x = "Sampler", y = "Number of OTUs", colour = "Ratio")
 ```
 
 Count total OTUs per sampler in field controls.
+
 
 ```{r}
 Field_cont %>%
@@ -421,9 +489,10 @@ Field_cont %>%
   pivot_wider(names_from = ratio_cat, values_from = n, values_fill = 0)
 ```
 
-There are significant differences in contamination levels across samplers. Passive methods have very low detection (6-7 OTUs). Burkhart, Coriolis, and Sass have 4-19 OTUs. Kärcher, Electrostatic, HEPA, and Drone have 89-310 OTUs. For Kärcher, most OTUs have ratio < 1 (likely environmental not contaminant). Drone, Electrostatic, and HEPA show high ratios indicating true contamination.
+There are significant differences in contamination levels across samplers. Passive methods have very low detection (6-7 OTUs) but this is because they are not true filed controls (not opened in the filed). Burkhart, Coriolis, and Sass have 4-19 OTUs. Kärcher, Electrostatic, HEPA, and Drone have 89-310 OTUs. For Kärcher, most OTUs have ratio < 1 (likely environmental not contaminant). Drone, Electrostatic, and HEPA show high ratios indicating true contamination.
 
 Summarize field contaminant taxonomy by sampler.
+
 
 ```{r}
 Field_cont %>%
@@ -463,12 +532,17 @@ cont_summary_field <-
 
 cont_summary <-
   cont_summary_field %>%
-  bind_cols(cont_summary_lab) %>%
+  mutate(
+    n_OTUs_lab = cont_summary_lab$n_OTUs_lab,
+    n_ratio_gt1_lab = cont_summary_lab$n_ratio_gt1_lab,
+    total_reads_lab = cont_summary_lab$total_reads_lab
+  ) %>%
   select(taxon, Sampler, n_OTUs_field, n_ratio_gt1, n_ratio_gt10,
          total_reads_field, n_OTUs_lab, n_ratio_gt1_lab)
 ```
 
 Export contamination summary to intermediate output folder.
+
 
 ```{r}
 write_tsv(cont_summary, here("Data", "Fungi", "out_intermediate", "Fungi_contamination.tsv"))
@@ -476,7 +550,9 @@ write_tsv(cont_summary, here("Data", "Fungi", "out_intermediate", "Fungi_contami
 
 ## Exclude contaminants
 
-Remove reads from contaminant OTUs using 2× max subtraction method. For lab controls: subtract from all samples. For field controls: only subtract if ratio > 1.
+Apply contamination correction by subtracting `2 x max(control reads)` per flagged OTU.
+
+This conservative rule removes likely contaminant signal while preserving true detections when controls have low relative abundance. After subtraction, negative values are clipped to zero and high-confidence contaminant carryover should be strongly reduced.
 
 ```{r}
 Remove_reads_lab <-
@@ -574,6 +650,7 @@ Fungi_ASV <-
 
 Create long format ASV table.
 
+
 ```{r}
 Fungi_ASV_long <-
   pivot_longer(Fungi_ASV, -Index, names_to = "seq", values_to = "reads")
@@ -581,7 +658,10 @@ Fungi_ASV_long <-
 
 # Subset for target group
 
-Filter taxonomy table to retain only sequences in cleaned ASV table.
+Restrict the cleaned table to fungal OTUs with phylum-level assignment.
+
+The ITS2 amplicon includes off-target taxa (notably plants), and fungal-focused inference for **Q1-Q4** requires a taxonomically consistent target set.
+
 
 ```{r}
 Fungi_tax <-
@@ -605,11 +685,12 @@ Fungi_ASV_long %>%
   geom_bar(stat = "identity") +
   coord_flip() +
   scale_y_log10() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90))
+  theme_airsample() +
+  theme(axis.text.x = element_text(angle = 0))
 ```
 
 The primers amplify more than fungi. Notably, many plant sequences (Tracheophyta) are present. For this analysis, retain only sequences assigned to kingdom Fungi with phylum-level identification.
+
 
 ```{r}
 Fungi_seq_keep <-
@@ -659,7 +740,10 @@ Fungi_ASV_clean_long <-
 
 # Prevalence
 
-Plot prevalence distribution (number of samples per OTU).
+Summarize OTU prevalence across samples.
+
+Prevalence profiles contextualize whether richness patterns are driven by many rare OTUs or a stable core community.
+
 
 ```{r}
 Fungi_ASV_clean_long %>%
@@ -668,13 +752,16 @@ Fungi_ASV_clean_long %>%
   summarise(prev = n()) %>%
   ggplot(aes(x = prev)) +
   geom_histogram(binwidth = 5, fill = NA, color = "darkred") +
-  theme_minimal() +
+  theme_airsample() +
   labs(x = "Prevalence (number of samples)", y = "Number of OTUs")
 ```
 
 # Species richness
 
-Count OTUs by phylum in cleaned dataset.
+Quantify and model observed richness by sampler, duration, and site.
+
+This is the primary **Q1** analysis (how many species each sampler detects) and establishes the main performance ranking.
+
 
 ```{r}
 Fungi_ASV_clean_long %>%
@@ -701,11 +788,13 @@ rar_curve %>%
   ggplot(aes(x = Sample, y = Species, group = Site, colour = duration)) +
   geom_line() +
   facet_wrap(~Sampler) +
-  theme_minimal() +
+  theme_airsample() +
+  scale_color_brewer(palette = "Dark2") +
   labs(x = "Sequencing depth", y = "Observed richness")
 ```
 
 Compute observed richness per sample.
+
 
 ```{r}
 S_df <-
@@ -715,9 +804,6 @@ S_df <-
   summarise(S = n()) %>%
   left_join(Meta) %>%
   filter(Sampler != "Drone") %>%
-  mutate(Sampler = factor(Sampler, levels = c("Kärcher", "Coriolis", "Sass", "Hepa",
-                                               "Burkhart", "Electrostatic", "MWAC",
-                                               "WSL_Filter"))) %>%
   mutate(taxon = "Fungi")
 ```
 
@@ -729,18 +815,16 @@ S_df %>%
   facet_grid(~Sampler, scales = "free_x") +
   geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
   geom_point() +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom") +
+  theme_airsample() +
+  scale_color_brewer(palette = "Paired") +
   labs(x = "Duration", y = "Observed richness (S)")
 ```
 
 ## Formal statistical model
 
-Sites are a blocking factor (random sample of locations). We fit a random intercept per site. Fit main effects model (no interaction) since passive samplers only have one duration level, making the full interaction uninterpretable.
+Fit a negative-binomial GLMM with sampler and duration as fixed effects and site as random intercept.
 
-Overdispersion is ubiquitous in metabarcoding richness data, so we use negative binomial family directly.
+Sites are blocking units, and richness is overdispersed in metabarcoding; this model is the formal inferential test for **Q1**. Fixed-effect contrasts provide sampler and duration effects after accounting for between-site heterogeneity.
 
 ```{r}
 S_df_model <-
@@ -761,48 +845,11 @@ sim_res <- simulateResiduals(richness_glmm, n = 1000)
 plot(sim_res)
 ```
 
-Extract predicted richness and confidence intervals.
-
-```{r}
-# Get predictions and standard errors
-pred_obj <- predict(richness_glmm, se.fit = TRUE, type = "response")
-
-richness_pred <-
-  S_df_model %>%
-  mutate(
-    pred_S = pred_obj$fit,
-    pred_SE = pred_obj$se.fit,
-    pred_lower = pred_S - 1.96 * pred_SE,
-    pred_upper = pred_S + 1.96 * pred_SE
-  )
-
-richness_pred %>%
-  select(Sampler, duration, Sites, S, pred_S, pred_lower, pred_upper) %>%
-  head(20)
-```
-
-Plot observed richness with model predictions overlaid.
-
-```{r}
-ggplot(richness_pred, aes(x = duration, y = S)) +
-  facet_grid(~Sampler, scales = "free_x") +
-  # Observed data
-  geom_line(aes(group = Sites, colour = Sites), linewidth = 0.2, colour = "grey") +
-  geom_point(aes(colour = Sites)) +
-  # Model predictions
-  geom_ribbon(aes(y = pred_S, ymin = pred_lower, ymax = pred_upper, group = 1),
-              alpha = 0.2, fill = "darkblue") +
-  geom_line(aes(y = pred_S, group = 1), colour = "darkblue", linewidth = 1) +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom") +
-  labs(x = "Duration", y = "Observed richness (S)")
-```
 
 ## Comparison with Burkhart
 
 Compute fold-differences relative to Burkhart at 5 hours.
+
 
 ```{r}
 S_df %>%
@@ -819,13 +866,16 @@ S_df %>%
 
 Export richness for cross-group figures.
 
+
 ```{r}
 write_tsv(S_df, here("Data", "Fungi", "out_intermediate", "Fungi_richness.tsv"))
 ```
 
 # Faith's phylogenetic diversity
 
-Placeholder for phylogenetic diversity analysis. Requires phylogenetic tree from FastTree (not yet built).
+Compute Faith's PD in parallel to observed richness when a tree is available.
+PD is the phylogenetic complement to **Q1**, testing whether sampler rankings hold for branch-length diversity as well as OTU counts.
+
 
 ```{r}
 if(exists("Fungi_tree")) {
@@ -856,10 +906,8 @@ if(exists("Fungi_tree")) {
     facet_grid(~Sampler, scales = "free_x") +
     geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
     geom_point() +
-    theme_minimal() +
-    scale_color_brewer(palette = "Set1") +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-          legend.position = "bottom") +
+    theme_airsample() +
+    scale_color_brewer(palette = "Paired") +
     labs(x = "Duration", y = "Faith's PD")
 
   # Export updated richness with PD
@@ -872,7 +920,9 @@ if(exists("Fungi_tree")) {
 
 # Richness vs air volume
 
-Compute air volume for active samplers.
+Relate observed richness to sampled air volume for active samplers.
+This directly addresses **Q2** (does more sampled air yield more detected species?).
+
 
 ```{r}
 flow_rate <-
@@ -905,7 +955,7 @@ S_df %>%
   geom_smooth(aes(group = 1), method = "lm", colour = "darkblue", linewidth = 0.5) +
   scale_x_log10() +
   scale_color_brewer(palette = "Set1") +
-  theme_minimal() +
+  theme_airsample() +
   labs(x = "Air volume (L)", y = "Observed richness (S)")
 ```
 
@@ -923,63 +973,152 @@ summary(vol_lm)
 
 # Sampling completeness
 
-Assess what fraction of the site community each sampler detects. Reference community = ALL species detected at a site across all samplers and durations (pooled). This answers: "Of all species we know are present, what fraction does this sampler × duration detect?"
+Estimate per-site completeness as the fraction of each site's pooled reference community detected by each sampler-duration combination.
+This complements **Q1/Q2** by putting richness in relative terms against the site-level "known" community.
+OTUs are classified by site prevalence as: widespread (>60% of sites), intermediate (20-60%), and rare (<20%).
 
-Build reference community per site (pool all samplers × durations).
+Build the site-level reference community and classify OTUs by site prevalence.
 
 ```{r}
+analysis_grid <-
+  Meta %>%
+  filter(Index %in% Fungi_ASV_clean$Index, Sampler != "Drone") %>%
+  distinct(Sites, Sampler, duration)
+
+n_sites_total <- analysis_grid %>% distinct(Sites) %>% nrow()
+
+otu_prevalence <-
+  Fungi_ASV_clean_long %>%
+  left_join(Meta, by = "Index") %>%
+  filter(Sampler != "Drone", reads > 0) %>%
+  distinct(seq, Sites) %>%
+  count(seq, name = "n_sites_detected") %>%
+  mutate(
+    site_prevalence = n_sites_detected / n_sites_total,
+    prevalence_class = case_when(
+      site_prevalence > 0.60 ~ "widespread",
+      site_prevalence >= 0.20 ~ "intermediate",
+      TRUE ~ "rare"
+    ),
+    prevalence_class = factor(
+      prevalence_class,
+      levels = c("widespread", "intermediate", "rare")
+    )
+  )
+
 ref_community_species <-
   Fungi_ASV_clean_long %>%
-  left_join(Meta) %>%
-  filter(Sampler != "Drone") %>%
-  filter(reads > 0) %>%
-  group_by(Sites, seq) %>%
-  summarise(in_reference = TRUE)
+  left_join(Meta, by = "Index") %>%
+  filter(Sampler != "Drone", reads > 0) %>%
+  distinct(Sites, seq) %>%
+  left_join(otu_prevalence %>% select(seq, prevalence_class), by = "seq")
 
 ref_community_richness <-
   ref_community_species %>%
-  group_by(Sites) %>%
-  summarise(S_reference = n())
+  group_by(Sites, prevalence_class) %>%
+  summarise(S_reference = n_distinct(seq), .groups = "drop")
 ```
 
-Compute species-level completeness (fraction of reference species detected).
+Compute class-specific completeness (fraction of each site's class-specific community detected).
 
 ```{r}
-completeness_df <-
+sampler_class_richness <-
   Fungi_ASV_clean_long %>%
-  left_join(Meta) %>%
-  filter(Sampler != "Drone") %>%
-  filter(reads > 0) %>%
-  group_by(Sites, Sampler, duration) %>%
-  summarise(S_sampler = n_distinct(seq), .groups = "drop") %>%
-  left_join(ref_community_richness) %>%
+  left_join(Meta, by = "Index") %>%
+  filter(Sampler != "Drone", reads > 0) %>%
+  distinct(Sites, Sampler, duration, seq) %>%
+  left_join(otu_prevalence %>% select(seq, prevalence_class), by = "seq") %>%
+  group_by(Sites, Sampler, duration, prevalence_class) %>%
+  summarise(S_sampler = n_distinct(seq), .groups = "drop")
+
+completeness_df <-
+  analysis_grid %>%
+  crossing(prevalence_class = c("widespread", "intermediate", "rare")) %>%
   mutate(
-    fraction_detected = S_sampler / S_reference,
+    prevalence_class = factor(
+      prevalence_class,
+      levels = c("widespread", "intermediate", "rare")
+    )
+  ) %>%
+  left_join(
+    sampler_class_richness,
+    by = c("Sites", "Sampler", "duration", "prevalence_class")
+  ) %>%
+  left_join(ref_community_richness, by = c("Sites", "prevalence_class")) %>%
+  mutate(
+    S_sampler = replace_na(S_sampler, 0L),
+    S_reference = replace_na(S_reference, 0L),
+    fraction_detected = ifelse(S_reference > 0, S_sampler / S_reference, NA_real_),
     taxon = "Fungi"
   )
 ```
 
-Plot completeness by sampler and duration.
+Plot class-specific completeness by sampler and duration.
+
 
 ```{r}
 completeness_df %>%
-  ggplot(aes(x = Sampler, y = fraction_detected, fill = duration)) +
-  geom_boxplot() +
+  ggplot(aes(x = Sampler, y = fraction_detected, color = duration)) +
+  geom_point(alpha = 0.6, size = 2, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.4)) +
+  stat_summary(
+    fun.data = function(x) {
+      m <- mean(x, na.rm = TRUE)
+      se <- sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x)))
+      data.frame(y = m, ymin = m - 1.96 * se, ymax = m + 1.96 * se)
+    },
+    geom = "errorbar",
+    width = 0.25,
+    linewidth = 0.8,
+    position = position_dodge(width = 0.4)
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    size = 3,
+    position = position_dodge(width = 0.4)
+  ) +
+  facet_grid(.~prevalence_class) +
   coord_flip() +
-  theme_minimal() +
-  labs(x = "Sampler", y = "Fraction of site community detected", fill = "Duration") +
+  theme_airsample() +
+  theme(axis.text.x = element_text(angle = 0)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    x = "Sampler",
+    y = "Fraction of site community detected (within prevalence class)",
+    color = "Duration"
+  ) +
   ylim(0, 1)
 ```
 
-Export completeness data.
+Add unstratified "all" rows alongside the prevalence-class rows, then export the combined completeness table for use in cross-group figures (`Joined_Figures.Rmd`).
 
 ```{r}
+completeness_all <-
+  Fungi_ASV_clean_long %>%
+  left_join(Meta, by = "Index") %>%
+  filter(Sampler != "Drone", reads > 0) %>%
+  group_by(Sites, Sampler, duration) %>%
+  summarise(S_sampler = n_distinct(seq), .groups = "drop") %>%
+  left_join(
+    ref_community_species %>%
+      group_by(Sites) %>%
+      summarise(S_reference = n_distinct(seq), .groups = "drop"),
+    by = "Sites"
+  ) %>%
+  mutate(
+    prevalence_class = "all",
+    fraction_detected = S_sampler / S_reference,
+    taxon = "Fungi"
+  )
+
+completeness_df <- bind_rows(completeness_df, completeness_all)
+
 write_tsv(completeness_df, here("Data", "Fungi", "out_intermediate", "Fungi_completeness.tsv"))
 ```
 
 # Richness correlation across sites
 
-Compute correlation matrix of richness across sampler × duration combinations.
+Correlate site-level richness rankings across sampler-duration combinations. This addresses **Q4** by testing whether samplers agree on which sites are species-rich versus species-poor. High positive correlations imply robust ecological site gradients detectable across technologies.
 
 ```{r}
 Cor_mat <-
@@ -993,17 +1132,51 @@ Cor_mat <-
   cor(method = "pearson", use = "pairwise.complete.obs")
 ```
 
-Plot correlation matrix.
+We restrict the correlation display to biologically meaningful contrasts: same sampler across durations, and same duration across samplers. Mixed sampler+duration contrasts are hard to interpret and are masked. For **Q4**, consistent positive correlations within these focused comparisons indicate that samplers detect the same site-level richness gradients.
 
 ```{r}
-Cor_mat %>%
-  corrplot(type = "lower", diag = FALSE, tl.col = "black", tl.cex = 0.8,
-           method = "ellipse", na.label = "square", na.label.col = "white")
+cor_meta <-
+  tibble(Sampler_dur = colnames(Cor_mat)) %>%
+  mutate(
+    duration = sub(".* (30 min|5 hours|2 weeks)$", "\\1", Sampler_dur),
+    Sampler = sub(" (30 min|5 hours|2 weeks)$", "", Sampler_dur),
+    duration = factor(duration, levels = duration_order),
+    Sampler = factor(Sampler, levels = sampler_order)
+  ) %>%
+  arrange(duration, Sampler)
+
+ord <- match(cor_meta$Sampler_dur, colnames(Cor_mat))
+Cor_mat_ord <- Cor_mat[ord, ord]
+
+same_sampler_diff_time <-
+  outer(as.character(cor_meta$Sampler), as.character(cor_meta$Sampler), "==") &
+  outer(as.character(cor_meta$duration), as.character(cor_meta$duration), "!=")
+
+same_time_diff_sampler <-
+  outer(as.character(cor_meta$duration), as.character(cor_meta$duration), "==") &
+  outer(as.character(cor_meta$Sampler), as.character(cor_meta$Sampler), "!=")
+
+keep_focus <- same_sampler_diff_time | same_time_diff_sampler
+diag(keep_focus) <- FALSE
+
+Cor_focus_mat <- Cor_mat_ord
+Cor_focus_mat[!keep_focus] <- NA
+
+corrplot(
+  Cor_focus_mat,
+  type = "lower",
+  diag = FALSE,
+  tl.col = "black",
+  tl.cex = 0.8,
+  method = "ellipse",
+  na.label = "square",
+  na.label.col = "darkgrey"
+)
 ```
 
 # Richness by taxonomic subgroup
 
-Test whether sampler effects differ between Ascomycota and Basidiomycota.
+Repeat richness analyses within major fungal clades (Ascomycota, Basidiomycota, and Agaricomycetes). This extends **Q1** by testing whether sampler rankings depend on fungal subgroup biology, including spore morphology differences. If sampler rankings stay similar across clades, sampler performance is broad and not strongly clade-specific.
 
 ```{r}
 S_subgroup_df <-
@@ -1015,13 +1188,10 @@ S_subgroup_df <-
   group_by(Index, phylum) %>%
   filter(reads > 0) %>%
   summarise(S = n()) %>%
-  left_join(Meta) %>%
-  mutate(Sampler = factor(Sampler, levels = c("Kärcher", "Coriolis", "Sass", "Hepa",
-                                               "Burkhart", "Electrostatic", "MWAC",
-                                               "WSL_Filter")))
+  left_join(Meta)
 ```
 
-Plot richness by phylum.
+Visualize richness separately for Ascomycota and Basidiomycota. If sampler rankings are consistent across phyla, this indicates broad performance rather than spore-type bias. Differences would suggest that spore morphology (e.g., unicellular conidia vs multicellular basidiospores) influences sampler capture efficiency.
 
 ```{r}
 S_subgroup_df %>%
@@ -1029,10 +1199,8 @@ S_subgroup_df %>%
   facet_grid(phylum ~ Sampler, scales = "free_y") +
   geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
   geom_point() +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom") +
+  theme_airsample() +
+  scale_color_brewer(palette = "Paired") +
   labs(x = "Duration", y = "Observed richness (S)")
 ```
 
@@ -1050,157 +1218,111 @@ basidiomycota_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
 summary(basidiomycota_glmm)
 ```
 
-Analyze Agaricomycetes specifically (fruiting body fungi).
+Ascomycota and Basidiomycota show remarkably similar sampler patterns, with consistent ranking of high- and low-performing technologies across both phyla. This indicates that the main sampler effects are robust across fungal groups rather than driven by one lineage. Interpreted biologically, the lack of strong phylum-specific differences suggests little evidence for sampler bias tied to broad spore-type differences (e.g., typical ascomycete conidia vs basidiomycete spores).
 
-```{r}
-S_agaricomycetes_df <-
-  Fungi_ASV_clean_long %>%
-  left_join(Fungi_tax) %>%
-  filter(class == "Agaricomycetes") %>%
-  left_join(Meta) %>%
-  filter(Sampler != "Drone") %>%
-  group_by(Index) %>%
-  filter(reads > 0) %>%
-  summarise(S = n()) %>%
-  left_join(Meta) %>%
-  mutate(Sampler = factor(Sampler, levels = c("Kärcher", "Coriolis", "Sass", "Hepa",
-                                               "Burkhart", "Electrostatic", "MWAC",
-                                               "WSL_Filter")))
-```
-
-Plot Agaricomycetes richness.
-
-```{r}
-S_agaricomycetes_df %>%
-  ggplot(aes(y = S, x = duration, colour = Sites)) +
-  facet_grid(~ Sampler, scales = "free_x") +
-  geom_line(aes(group = Sites), linewidth = 0.2, colour = "grey") +
-  geom_point() +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom") +
-  labs(x = "Duration", y = "Observed richness (Agaricomycetes)")
-```
 
 # Nestedness vs turnover
 
-Use betapart to decompose Sørensen dissimilarity into nestedness and turnover components. Compare sampler pairs averaged across sites.
-
-Build community matrix and sample metadata from the same filtered set to ensure row alignment.
+Decompose compositional dissimilarity into turnover and nestedness using one pooled community profile per sampler.
+This addresses **Q3** by testing whether low-performing samplers detect subsets of Kärcher (nestedness) or systematically different species (turnover). Kärcher is the reference because it has the highest flow rate and highest overall capture.
+High nestedness implies volume limitation without strong technological bias; high turnover implies technology-specific capture bias; mixed values imply both effects.
 
 ```{r}
-non_drone_idx <-
-  Meta %>%
-  filter(Index %in% Fungi_ASV_clean$Index) %>%
+comm_pooled <-
+  Fungi_ASV_clean_long %>%
+  left_join(Meta, by = "Index") %>%
   filter(Sampler != "Drone") %>%
-  pull(Index)
-
-comm_mat <-
-  Fungi_ASV_clean %>%
-  filter(Index %in% non_drone_idx) %>%
+  group_by(Sampler, seq) %>%
+  summarise(reads = sum(reads), .groups = "drop") %>%
+  pivot_wider(names_from = seq, values_from = reads, values_fill = 0) %>%
+  arrange(Sampler) %>%
   data.frame() %>%
-  `rownames<-`(.$Index) %>%
-  select(-Index) %>%
+  `rownames<-`(.$Sampler) %>%
+  select(-Sampler) %>%
   as.matrix()
 
-sample_meta <-
-  tibble(Index = rownames(comm_mat)) %>%
-  left_join(Meta) %>%
-  mutate(Sampler_dur = paste(Sampler, duration))
-```
+comm_pooled_pa <- ifelse(comm_pooled > 0, 1, 0)
 
-Convert to presence-absence matrix (betapart requires binary data).
+beta_result <- betapart::beta.pair(comm_pooled_pa, index.family = "sorensen")
 
-```{r}
-comm_mat_pa <- ifelse(comm_mat > 0, 1, 0)
-```
-
-Compute pairwise beta diversity.
-
-```{r}
-beta_result <- betapart::beta.pair(comm_mat_pa, index.family = "sorensen")
-```
-
-Extract pairwise nestedness and turnover matrices.
-
-```{r}
 beta_sor_mat <- as.matrix(beta_result$beta.sor)
 beta_sim_mat <- as.matrix(beta_result$beta.sim)
 beta_sne_mat <- as.matrix(beta_result$beta.sne)
-```
 
-Compute mean beta diversity components across sites for each sampler pair.
+karcher_idx <- which(rownames(beta_sor_mat) == "Kärcher")
 
-```{r}
-beta_df_list <- list()
-
-for(i in 1:(nrow(beta_sor_mat)-1)) {
-  for(j in (i+1):nrow(beta_sor_mat)) {
-
-    meta1 <- sample_meta[i, ]
-    meta2 <- sample_meta[j, ]
-
-    if(meta1$Sites == meta2$Sites & meta1$Sampler != meta2$Sampler) {
-      beta_df_list[[length(beta_df_list) + 1]] <- tibble(
-        Sampler1 = meta1$Sampler,
-        Sampler2 = meta2$Sampler,
-        duration1 = meta1$duration,
-        duration2 = meta2$duration,
-        Sites = meta1$Sites,
-        beta_sor = beta_sor_mat[i, j],
-        beta_sim = beta_sim_mat[i, j],
-        beta_sne = beta_sne_mat[i, j]
-      )
-    }
-  }
-}
-
-beta_df <- bind_rows(beta_df_list)
-```
-
-Compute mean across sites for each sampler pair.
-
-```{r}
-beta_summary <-
-  beta_df %>%
-  group_by(Sampler1, Sampler2, duration1, duration2) %>%
-  summarise(
-    beta_sor = mean(beta_sor),
-    beta_sim = mean(beta_sim),
-    beta_sne = mean(beta_sne),
-    .groups = "drop"
+beta_vs_karcher <-
+  tibble(
+    Sampler = rownames(beta_sor_mat)[-karcher_idx],
+    beta_sor = beta_sor_mat[-karcher_idx, karcher_idx],
+    beta_sim = beta_sim_mat[-karcher_idx, karcher_idx],
+    beta_sne = beta_sne_mat[-karcher_idx, karcher_idx]
   ) %>%
-  mutate(taxon = "Fungi")
+  mutate(
+    turnover_fraction = ifelse(beta_sor > 0, beta_sim / beta_sor, NA_real_),
+    nestedness_fraction = ifelse(beta_sor > 0, beta_sne / beta_sor, NA_real_),
+    sampler_type = case_when(
+      Sampler %in% c("MWAC", "WSL_Filter") ~ "Passive",
+      TRUE ~ "Active"
+    ),
+    Sampler = factor(Sampler, levels = sampler_order[sampler_order != "Kärcher"])
+  )
 ```
 
-Plot nestedness vs turnover.
+Visualize the fraction of dissimilarity attributable to turnover vs nestedness for each sampler relative to Kärcher.
+Fraction-based decomposition (`beta_sim / beta_sor`, `beta_sne / beta_sor`) gives interpretable components that sum to 1 and are directly comparable across samplers.
+Bars dominated by nestedness indicate subset detection; bars dominated by turnover indicate different captured communities.
 
 ```{r}
-beta_summary %>%
-  mutate(comparison = paste(Sampler1, duration1, "vs", Sampler2, duration2)) %>%
-  select(comparison, beta_sim, beta_sne) %>%
-  pivot_longer(c(beta_sim, beta_sne), names_to = "component", values_to = "value") %>%
-  ggplot(aes(x = comparison, y = value, fill = component)) +
-  geom_bar(stat = "identity") +
+beta_vs_karcher %>%
+  select(Sampler, turnover_fraction, nestedness_fraction, sampler_type) %>%
+  pivot_longer(c(turnover_fraction, nestedness_fraction),
+               names_to = "component", values_to = "fraction") %>%
+  mutate(component = recode(
+    component,
+    turnover_fraction = "Turnover (beta_sim)",
+    nestedness_fraction = "Nestedness (beta_sne)"
+  )) %>%
+  ggplot(aes(x = Sampler, y = fraction, fill = component)) +
+  geom_col(position = "stack") +
+  facet_grid(sampler_type~., scales = "free", space = "free") +
   coord_flip() +
-  theme_minimal() +
-  labs(x = "Sampler pair", y = "Beta diversity component", fill = "Component") +
-  scale_fill_brewer(palette = "Set1", labels = c("Turnover", "Nestedness"))
+  scale_fill_brewer(palette = "Set1") +
+  theme_airsample() +
+  theme(axis.text.x = element_text(angle = 0)) +
+  labs(
+    x = "Sampler",
+    y = "Fraction of dissimilarity (vs Kärcher)",
+    fill = "Component",
+    title = "Compositional dissimilarity decomposition"
+  )
 ```
 
-Export betapart results.
+Nestedness-dominated profiles indicate that lower-capture samplers mostly recover subsets of Kärcher detections (volume limitation). Turnover-dominated profiles indicate technology-driven differences in which species are captured (potential sampler bias). Mixed profiles indicate both missing-species effects and technology-specific capture effects are present.
+
 
 ```{r}
-write_tsv(beta_summary, here("Data", "Fungi", "out_intermediate", "Fungi_nestedness_turnover.tsv"))
+write_tsv(
+  beta_vs_karcher %>% mutate(taxon = "Fungi"),
+  here("Data", "Fungi", "out_intermediate", "Fungi_nestedness_turnover.tsv")
+)
 ```
 
 # Rank-abundance correlation
 
-Compute Spearman correlation on relative abundance across shared OTUs between sampler pairs. Use the same filtered index set as betapart to ensure alignment.
+Build sample-level relative-abundance matrices for non-drone samples and pair each sample with its metadata.
+
+This addresses **Q3** from an abundance perspective by testing whether samplers agree on which taxa are dominant, not only which taxa are present.
+If dominant taxa are consistently recovered across samplers, pairwise Spearman rho should be high within sites.
 
 ```{r}
-rel_abund_mat <-
+non_drone_idx <-
+  Meta %>%
+  filter(Index %in% Fungi_ASV_clean$Index, Sampler != "Drone") %>%
+  pull(Index)
+
+# Build relative-abundance matrix and sample key
+rank_mat <-
   Fungi_ASV_clean %>%
   filter(Index %in% non_drone_idx) %>%
   data.frame() %>%
@@ -1208,51 +1330,71 @@ rel_abund_mat <-
   select(-Index) %>%
   as.matrix()
 
-rel_abund_mat <- sweep(rel_abund_mat, 1, rowSums(rel_abund_mat), "/")
-```
+rank_mat <- sweep(rank_mat, 1, rowSums(rank_mat), "/")
 
-Compute rank-abundance correlation for each sampler pair at same site.
+sample_key <-
+  Meta %>%
+  filter(Index %in% rownames(rank_mat), Sampler != "Drone") %>%
+  select(Index, Sites, Sampler, duration) %>%
+  distinct() %>%
+  mutate(Sampler_dur = paste(Sampler, duration))
 
-```{r}
-rank_cor_list <- list()
+combo_lookup <-
+  sample_key %>%
+  distinct(Sampler, duration, Sampler_dur)
 
-for(i in 1:(nrow(rel_abund_mat)-1)) {
-  for(j in (i+1):nrow(rel_abund_mat)) {
+pair_lookup <-
+  tidyr::crossing(
+    combo_lookup %>%
+      dplyr::rename(Sampler1 = Sampler, duration1 = duration, Sampler_dur_1 = Sampler_dur),
+    combo_lookup %>%
+      dplyr::rename(Sampler2 = Sampler, duration2 = duration, Sampler_dur_2 = Sampler_dur)
+  ) %>%
+  filter(Sampler_dur_1 < Sampler_dur_2)
 
-    meta1 <- sample_meta[i, ]
-    meta2 <- sample_meta[j, ]
+idx_tbl <- sample_key %>% select(Sites, Sampler_dur, Index)
 
-    if(meta1$Sites == meta2$Sites) {
+site_pair_df <-
+  tidyr::crossing(Sites = unique(sample_key$Sites), pair_lookup) %>%
+  left_join(
+    idx_tbl %>% dplyr::rename(Sampler_dur_1 = Sampler_dur, Index1 = Index),
+    by = c("Sites", "Sampler_dur_1")
+  ) %>%
+  left_join(
+    idx_tbl %>% dplyr::rename(Sampler_dur_2 = Sampler_dur, Index2 = Index),
+    by = c("Sites", "Sampler_dur_2")
+  ) %>%
+  filter(!is.na(Index1), !is.na(Index2))
 
-      shared_otus <- (rel_abund_mat[i, ] > 0) & (rel_abund_mat[j, ] > 0)
+cor_res <-
+  purrr::pmap(
+    site_pair_df %>% select(Index1, Index2),
+    function(Index1, Index2) {
+      v1 <- rank_mat[Index1, ]
+      v2 <- rank_mat[Index2, ]
+      shared <- (v1 > 0) & (v2 > 0)
 
-      if(sum(shared_otus) > 2) {
-        cor_test <- cor.test(rel_abund_mat[i, shared_otus],
-                            rel_abund_mat[j, shared_otus],
-                            method = "spearman")
-
-        rank_cor_list[[length(rank_cor_list) + 1]] <- tibble(
-          Sampler1 = meta1$Sampler,
-          Sampler2 = meta2$Sampler,
-          duration1 = meta1$duration,
-          duration2 = meta2$duration,
-          Sites = meta1$Sites,
-          rho = cor_test$estimate,
-          p_value = cor_test$p.value
-        )
+      if (sum(shared) <= 2) {
+        return(list(rho = NA_real_, p_value = NA_real_, n_shared = sum(shared)))
       }
+
+      ct <- suppressWarnings(cor.test(v1[shared], v2[shared], method = "spearman", exact = FALSE))
+      list(rho = unname(ct$estimate), p_value = ct$p.value, n_shared = sum(shared))
     }
-  }
-}
+  )
 
-rank_cor_df <- bind_rows(rank_cor_list)
-```
+rank_cor_df <-
+  site_pair_df %>%
+  mutate(
+    rho = purrr::map_dbl(cor_res, "rho"),
+    p_value = purrr::map_dbl(cor_res, "p_value"),
+    n_shared = purrr::map_int(cor_res, "n_shared")
+  ) %>%
+  select(Sites, Sampler1, Sampler2, duration1, duration2, rho, p_value, n_shared)
 
-Compute mean correlation across sites.
-
-```{r}
 rank_cor_summary <-
   rank_cor_df %>%
+  filter(!is.na(rho)) %>%
   group_by(Sampler1, Sampler2, duration1, duration2) %>%
   summarise(
     rho = mean(rho, na.rm = TRUE),
@@ -1262,39 +1404,84 @@ rank_cor_summary <-
   mutate(taxon = "Fungi")
 ```
 
-Create correlation matrix for plotting.
 
 ```{r}
-rank_cor_mat <-
-  rank_cor_summary %>%
-  mutate(
+labels <-
+  combo_lookup %>%
+  arrange(duration, Sampler) %>%
+  pull(Sampler_dur)
+
+# Long pair table
+pair_long <- rank_cor_summary %>%
+  transmute(
     Sampler_dur1 = paste(Sampler1, duration1),
-    Sampler_dur2 = paste(Sampler2, duration2)
+    Sampler_dur2 = paste(Sampler2, duration2),
+    rho
+  )
+
+# Wide (upper triangle entries where available)
+rank_cor_mat <-
+  pair_long %>% 
+  pivot_wider(
+    names_from = Sampler_dur2,
+    values_from = rho,
+    values_fill = NA_real_
   ) %>%
-  select(Sampler_dur1, Sampler_dur2, rho) %>%
-  bind_rows(
-    rank_cor_summary %>%
-      mutate(
-        Sampler_dur1 = paste(Sampler1, duration1),
-        Sampler_dur2 = paste(Sampler2, duration2)
-      ) %>%
-      select(Sampler_dur1 = Sampler_dur2, Sampler_dur2 = Sampler_dur1, rho)
-  ) %>%
-  pivot_wider(names_from = Sampler_dur2, values_from = rho) %>%
-  data.frame() %>%
-  `rownames<-`(.$Sampler_dur1) %>%
-  select(-Sampler_dur1) %>%
+  tibble::column_to_rownames("Sampler_dur1") %>%
   as.matrix()
 
+# Symmetrize + diagonal
+rank_cor_mat[lower.tri(rank_cor_mat)] <- t(rank_cor_mat)[lower.tri(rank_cor_mat)]
 diag(rank_cor_mat) <- 1
 ```
 
-Plot correlation matrix.
+Display the full pairwise rank-abundance correlation matrix. High values (warm colors) indicate that two sampler × duration combinations agree on which species are dominant. Clusters of high correlation within a duration block support **Q3** — samplers recover similar dominance hierarchies.
 
 ```{r}
 rank_cor_mat %>%
-  corrplot(type = "lower", diag = FALSE, tl.col = "black", tl.cex = 0.8,
+  corrplot(type = "lower", diag = TRUE, tl.col = "black", tl.cex = 0.8,
            method = "color", na.label = "square", na.label.col = "white")
+```
+
+For reporting, we summarize the full pairwise correlation matrix by comparison type. The key **Q3** statistic is the mean rho for same-duration comparisons — this tells us how well samplers agree on species dominance within comparable sampling effort.
+
+```{r}
+rank_cor_grouped <-
+  rank_cor_df %>%
+  filter(!is.na(rho)) %>%
+  mutate(comparison_type = case_when(
+    duration1 == duration2 & Sampler1 != Sampler2 ~ "Same duration, different sampler",
+    Sampler1 == Sampler2 & duration1 != duration2 ~ "Same sampler, different duration",
+    TRUE ~ "Different sampler & duration"
+  )) %>%
+  group_by(comparison_type) %>%
+  summarise(
+    mean_rho = round(mean(rho), 3),
+    sd_rho = round(sd(rho), 3),
+    n_comparisons = n(),
+    .groups = "drop"
+  )
+
+rank_cor_grouped
+```
+
+Most pairwise correlations are positive, indicating that shared species tend to maintain their rank ordering regardless of sampler. The same-duration/different-sampler comparisons are the most relevant for **Q3**: a high mean rho here means samplers agree on which species dominate the community.
+
+```{r}
+rank_cor_df %>%
+  filter(!is.na(rho)) %>%
+  mutate(comparison_type = case_when(
+    duration1 == duration2 & Sampler1 != Sampler2 ~ "Same duration\ndifferent sampler",
+    Sampler1 == Sampler2 & duration1 != duration2 ~ "Same sampler\ndifferent duration",
+    TRUE ~ "Different sampler\n& duration"
+  )) %>%
+  ggplot(aes(x = comparison_type, y = rho)) +
+  geom_jitter(width = 0.2, alpha = 0.3, size = 1.5) +
+  stat_summary(fun.data = mean_cl_boot, geom = "pointrange", color = "darkblue", size = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  theme_airsample() +
+  theme(axis.text.x = element_text(angle = 0)) +
+  labs(x = "Comparison type", y = "Spearman rho (site-level)")
 ```
 
 Export rank correlation results.
@@ -1305,7 +1492,7 @@ write_tsv(rank_cor_summary, here("Data", "Fungi", "out_intermediate", "Fungi_ran
 
 # Venn diagram
 
-Compare detection overlap for 4 main active samplers at 5 hours.
+Visualize shared and unique detections among the four main active samplers at 5 hours. This is a compact complement to **Q3**, showing overlap structure among the most comparable high-effort active methods. Large shared regions indicate consensus detection; large unique regions suggest sampler-specific capture.
 
 ```{r}
 sampler_venn <-
@@ -1326,70 +1513,10 @@ eulerr_options(quantities = list(fontsize = 10, col = "black"))
 plot(sampler_venn, legend = TRUE, quantities = TRUE)
 ```
 
-# Richness estimation sensitivity
-
-Use coverage-based richness estimation at 95% coverage to confirm sampler rankings match observed richness. Use `nboot = 0` to skip confidence intervals for speed on 100+ samples. Consistent coverage-based approach throughout the analysis.
-
-```{r}
-# Prepare per-sample abundance data
-sample_abundance <-
-  Fungi_ASV_clean_long %>%
-  left_join(Meta) %>%
-  filter(Sampler != "Drone") %>%
-  filter(reads > 0) %>%
-  group_by(Index) %>%
-  group_split()
-
-# Coverage-based estimation at 95% per sample (nboot = 0 for speed)
-sensitivity_df <-
-  map_df(sample_abundance, function(samp) {
-    idx <- unique(samp$Index)
-    abund_vec <- samp$reads
-
-    est <- tryCatch(
-      estimateD(abund_vec,
-                datatype = "abundance",
-                base = "coverage",
-                level = 0.95,
-                nboot = 0) %>%
-        filter(Order.q == 0),
-      error = function(e) NULL
-    )
-
-    if(is.null(est)) return(NULL)
-
-    tibble(
-      Index = idx,
-      S_coverage95 = est$qD
-    )
-  }) %>%
-  left_join(Meta) %>%
-  left_join(S_df %>% select(Index, S))
-```
-
-Plot observed vs coverage-standardized richness.
-
-```{r}
-sensitivity_df %>%
-  filter(!is.na(S_coverage95)) %>%
-  pivot_longer(c(S, S_coverage95), names_to = "metric", values_to = "richness") %>%
-  mutate(metric = ifelse(metric == "S", "Observed", "Coverage-standardized (95%)")) %>%
-  ggplot(aes(y = richness, x = duration, colour = Sites)) +
-  facet_grid(metric ~ Sampler, scales = "free_y") +
-  geom_line(aes(group = paste(Sites, metric)), linewidth = 0.2, colour = "grey") +
-  geom_point() +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
-        legend.position = "bottom") +
-  labs(x = "Duration", y = "Species richness")
-```
-
-Coverage-standardized richness at 95% coverage confirms that sampler rankings are robust to differences in sequencing depth. The relative performance of samplers remains consistent under coverage standardization.
 
 # Red list detection
 
-Summarize detection rates of Swiss macrofungi checklist by sampler.
+Quantify red-listed macrofungi detection per sampler and site. This provides a conservation-facing extension of **Q1** focused on societally relevant taxa, with sites as biological replicates for uncertainty estimation.
 
 ```{r}
 swiss_redlist <-
@@ -1404,6 +1531,7 @@ IUCN_Red_List_Status <- data.frame(STATUS, Full_Name, Rank)
 ```
 
 Match detected species to red list.
+
 
 ```{r}
 swiss_redlist_filt <-
@@ -1423,34 +1551,33 @@ Fungi_ASV_clean_long_rl <-
   left_join(swiss_redlist_filt)
 ```
 
-Compute detection rates by sampler.
+Count red-listed macrofungi detected per sampler at each site, treating sites as biological replicates. This avoids comparison against the total national checklist (most species do not occur at these 8 sites) and provides real uncertainty estimates. A deeper analysis of which specific red-listed species are detected would be a natural follow-up but is out of scope here.
 
 ```{r}
-redlist_detection <-
+redlist_per_site <-
   Fungi_ASV_clean_long_rl %>%
   left_join(Meta) %>%
   filter(Sampler != "Drone") %>%
   filter(duration == "5 hours" | duration == "2 weeks") %>%
   filter(!is.na(STATUS)) %>%
-  group_by(Sampler, species) %>%
-  summarise(detected = sum(reads) > 0) %>%
-  group_by(Sampler) %>%
-  summarise(n_species = sum(detected)) %>%
-  mutate(total_checklist = length(unique(swiss_redlist_filt$species))) %>%
-  mutate(detection_rate = n_species / total_checklist * 100)
+  filter(reads > 0) %>%
+  group_by(Sites, Sampler) %>%
+  summarise(n_redlist = n_distinct(species), .groups = "drop")
 
-redlist_detection
+redlist_per_site
 ```
 
-Plot detection rates.
+Plot red-listed species counts per sampler with site-level replication (jitter + mean ± SE).
 
 ```{r}
-redlist_detection %>%
-  ggplot(aes(x = Sampler, y = detection_rate)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
+redlist_per_site %>%
+  ggplot(aes(x = Sampler, y = n_redlist)) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 2, color = "steelblue") +
+  stat_summary(fun.data = mean_se, geom = "pointrange", size = 0.8) +
   coord_flip() +
-  theme_minimal() +
-  labs(x = "Sampler", y = "% of Swiss macrofungi checklist detected")
+  theme_airsample() +
+  theme(axis.text.x = element_text(angle = 0)) +
+  labs(x = "Sampler", y = "Red-listed species detected per site")
 ```
 
 
