@@ -123,18 +123,22 @@ Plants are also detected from the Fungi ITS2 primer (cross-amplification); resul
 
 All Data_Analysis scripts must implement this standardized contamination approach:
 
-### 1. Decontam (prevalence-based)
+### 1. Decontam (prevalence-based) — condensed sanity check
+
+Run decontam as a single-chunk sanity check. Report result (typically 0 contaminants for air eDNA — expected, because contaminants in air sampling are also environmental organisms, so the prevalence signal decontam relies on is weak). Keep for consistency across groups (bacterial collaborators expect it). Do NOT include threshold sweep plot — if nothing is found, there's nothing to visualize.
 
 ```r
 # Field controls set to NA (excluded from decontam — they contain real species)
-isContaminant(matrix, neg = blanks$is_neg, method = "prevalence")
+contamdf.prev <- isContaminant(matrix, neg = blanks$is_neg, method = "prevalence")
+# Report: "Decontam (prevalence, p < 0.1) identified N contaminants."
+# If N > 0, list them. If N = 0, state this and move on.
 ```
 
 ### 2. Lab Controls (extraction blanks + PCR negatives)
 
 - Compute mean and max reads per OTU across all lab controls
 - Compute ratio = mean(lab control reads) / mean(sample reads)
-- Visualize as heatmap
+- Do NOT visualize as heatmap (too many OTUs for bacteria/other groups; not informative for fungi where few are found). Instead: report summary statistics (n OTUs, n with ratio > 1) and add a **taxonomy commentary chunk** — join contaminant OTUs to taxonomy, summarize by higher-level taxonomy (phylum/class/order), and comment on which are expected contaminants (e.g., molds like Aspergillus/Penicillium/Cladosporium are omnipresent lab contaminants; skin-associated fungi like Malassezia are classical human contaminants; soil fungi like Mortierella indicate sample handling contamination). This taxonomy-aware commentary scales to any number of OTUs and is more informative than a heatmap.
 - For ALL OTUs found in lab controls: subtract `2 × max(lab control reads)` from ALL samples globally
 
 ### 3. Field Controls
@@ -143,6 +147,8 @@ isContaminant(matrix, neg = blanks$is_neg, method = "prevalence")
 - Only flag OTUs where ratio > 1 (more abundant in controls than samples)
 - For flagged OTUs: subtract `2 × max(field control reads)` from ALL samples globally
 - OTUs with ratio ≤ 1: keep untouched (likely environmental signal that happened to appear in controls)
+- Visualize: keep the per-sampler contamination summary plots (n OTUs by ratio category per sampler) — these are compact and show contamination as a result
+- Add taxonomy commentary for field contaminants (same approach as lab: summarize by taxonomy, comment on expected vs unexpected)
 
 ### 4. Post-cleaning
 
@@ -188,31 +194,33 @@ FastTree NJ trees from representative sequences. One tree per marker, built in t
 
 Each Data_Analysis script follows this structure:
 
-1. **Setup**: libraries (including `betapart`, `ape`, `picante`, `iNEXT`), `primer <- "{Group}"`, load Meta_data.tsv
+1. **Setup**: libraries (including `betapart`, `ape`, `picante`, `iNEXT`, `glmmTMB`, `DHARMa`), `primer <- "{Group}"`, load Meta_data.tsv
 2. **Load data**: ASV table, taxonomy, sequences (Biostrings), DNA concentrations, phylogenetic tree (placeholder — commented out until trees are built)
 3. **Fragment length distribution**: sequence length histogram, reads vs length
 4. **Rarefaction (pre-cleaning)**: by major phyla/groups — demonstrates sequencing saturation, justifies use of observed S
 5. **Clean data**:
    - Index hopping check (unused indices)
    - Remove known bad samples if any
-   - Decontam (prevalence-based, field controls as NA)
-   - Visualize control contamination ratios
-   - Lab controls: heatmap of contaminant OTUs
-   - Field controls: by-sampler contamination patterns (report contamination levels per sampler — this is itself a result). Export contamination summary to `Data/{Group}/out_intermediate/{Group}_contamination.tsv`
+   - Decontam: single chunk, report result, no threshold sweep plot (see Contamination Assessment Strategy)
+   - Lab controls: summary stats (n OTUs, n with ratio > 1) + taxonomy commentary on contaminant identity (no heatmap — doesn't scale)
+   - Field controls: per-sampler contamination summary plots (n OTUs by ratio category) + taxonomy commentary. Report contamination levels per sampler — this is itself a result. Export contamination summary to `Data/{Group}/out_intermediate/{Group}_contamination.tsv`
    - Exclude contaminants (2× max subtraction)
    - Remove empty OTUs, remove controls, check empty samples
 6. **Subset for target group**: filter to target kingdom/phylum
 7. **Prevalence**: histogram
-8. **Species richness (S)**: observed S by sampler × duration × site. Faceted by Sampler, colored by Site, with duration on x-axis. Include GLM: `S ~ Sampler * duration + Sites` (or GLMM with `(1|Sites)` if appropriate). Report estimated richness and CIs. Include Burkhart comparison table (fold-differences)
+8. **Species richness (S)**: observed S by sampler × duration × site. Faceted by Sampler, colored by Site, with duration on x-axis. Fit GLMM with **main effects only** (no interaction): `S ~ Sampler + duration + (1|Sites)` with **negative binomial family directly** (overdispersion is ubiquitous in metabarcoding data, no need to test Poisson first). Sites are a blocking factor (random sample of locations) — random intercept is appropriate and saves df. Check residuals using `DHARMa::simulateResiduals()` to verify model adequacy. **Add model predictions to plot**: overlay predicted richness ± 95% CI (blue ribbon/line) on observed data. Include Burkhart comparison table (fold-differences). Libraries: `glmmTMB`, `DHARMa`
 9. **Faith's PD**: same plot structure as S, using `picante::pd()`. Shown as parallel panel to S figure. (Placeholder until trees are built)
 10. **Richness vs air volume**: scatter of S vs log(air_vol) for active samplers + linear model fit. Report formal test
-11. **Sampling completeness**: fraction of site community captured per sampler × duration. Reference = ALL species detected at a site (pool all samplers × all durations). Compute species-level overlap (not just richness ratio) - what fraction of reference species does each sampler × duration detect? Use `estimateD(datatype = "abundance", base = "size")` to estimate asymptotic richness per site from pooled data. Compare observed richness to estimated richness (`fraction_of_estimated = S_sampler / S_estimated`). Export both metrics: `fraction_detected` (vs pooled observed) and `fraction_of_estimated` (vs extrapolated richness)
+11. **Sampling completeness**: fraction of site community captured per sampler × duration. Sites are replicates — do NOT pool over sites. Two complementary metrics:
+   - **fraction_detected**: Reference = ALL species detected at a site (pool all samplers × all durations). For each sampler × duration × site, compute what fraction of reference species it detects. This is straightforward species-level overlap.
+   - **fraction_of_estimated**: Use `estimateD(datatype = "abundance", base = "coverage", level = 0.95, nboot = 0)` on pooled-across-samplers abundance data *per site* to get a coverage-standardized richness estimate per site (only 8 sites, fast enough). Then `fraction_of_estimated = S_sampler / S_estimated_at_95pct_coverage`. Coverage = 0.95 is standard; coverage = 1 tends to inflate estimates for rich communities with many singletons. **Use `nboot = 0`** to skip bootstrap confidence intervals for speed (point estimates sufficient for this comparison).
+   - Export columns: taxon, Sites, Sampler, duration, S_sampler, S_reference, fraction_detected, S_estimated, fraction_of_estimated
 12. **Richness correlation across sites**: corrplot of S across sampler × duration combinations. Shows whether samplers agree on which sites are species-rich
-13. **Richness by taxonomic subgroup** (group-specific): repeat richness analysis for major subdivisions to test whether sampler effects differ by subgroup. See group-specific details below
+13. **Richness by taxonomic subgroup** (group-specific): repeat richness analysis for major subdivisions to test whether sampler effects differ by subgroup. Use same GLMM approach as overall richness (main effects only, negative binomial family). See group-specific details below
 14. **Nestedness vs turnover (betapart)**: pairwise Sørensen decomposition across sampler pairs, averaged across sites. Shows whether low-richness samplers detect a subset of what high-richness samplers detect (nestedness) or genuinely different species (turnover). Display as matrix or grouped bar chart. Replaces the old NMDS + PERMANOVA section
 15. **Rank-abundance correlation**: Spearman correlation on relative abundance (or rank) across all shared OTUs between sampler × duration pairs. Display as corrplot. Shows whether samplers agree on which species are dominant. Replaces the old similarity ranking section
 16. **Venn/Euler**: one key comparison — 4 main active samplers (Kärcher, Coriolis, Sass, Hepa) at 5 hours
-17. **iNEXT sensitivity (supplement)**: coverage-based rarefaction/extrapolation for q=0. Use `iNEXT()` (not `estimateD()` which is used in completeness) to generate full rarefaction curves. Confirm sampler ranking matches observed S under coverage standardization
+17. **Coverage-based richness sensitivity (supplement)**: coverage-based richness estimation for q=0 to confirm sampler rankings are robust. Use `estimateD(datatype = "abundance", base = "coverage", level = 0.95, nboot = 0)` per sample (~100+ samples). **Use `nboot = 0`** to skip bootstrap confidence intervals — makes it ~10-50x faster and point estimates are sufficient for this robustness check. Plot coverage-standardized S (at 95% coverage) alongside observed S in the same faceted format (sampler × duration, colored by site). If rankings match, the sensitivity check is confirmed. Consistent coverage-based approach throughout the analysis.
 18. **Group-specific extras** (short — one figure max): see below
 19. **Export results for cross-group figures**: write TSV files to `Data/{Group}/out_intermediate/` for use in `Joined_Figures.Rmd`. See export spec below
 20. **Session info**
@@ -243,9 +251,9 @@ Each Data_Analysis script must export TSV files to `Data/{Group}/out_intermediat
 |------|----------|-------------|
 | `{Group}_richness.tsv` | Observed S (and Faith's PD when available) per sample | taxon, Index, Sites, Sampler, duration, S, PD |
 | `{Group}_contamination.tsv` | Contamination summary per sampler: n OTUs in field controls, n with ratio > 1, n with ratio > 10, total reads in controls | taxon, Sampler, n_OTUs_field, n_ratio_gt1, n_ratio_gt10, total_reads_field, n_OTUs_lab, n_ratio_gt1_lab |
-| `{Group}_completeness.tsv` | Fraction of site community detected (species-level) | taxon, Sites, Sampler, duration, S_sampler, S_shared, S_reference, fraction_detected, S_estimated, fraction_of_estimated |
-| `{Group}_nestedness_turnover.tsv` | Betapart decomposition per sampler pair | taxon, Sampler1, Sampler2, duration, beta_sor, beta_sim (turnover), beta_sne (nestedness) |
-| `{Group}_rank_correlation.tsv` | Rank-abundance Spearman rho per sampler pair | taxon, Sampler1, Sampler2, rho, p_value |
+| `{Group}_completeness.tsv` | Fraction of site community detected (species-level) | taxon, Sites, Sampler, duration, S_sampler, S_reference, fraction_detected, S_estimated, fraction_of_estimated |
+| `{Group}_nestedness_turnover.tsv` | Betapart decomposition per sampler pair, averaged across sites. Sampler1/Sampler2 are sampler names only (not sampler+duration composites). Include separate duration column | taxon, Sampler1, Sampler2, duration1, duration2, beta_sor, beta_sim (turnover), beta_sne (nestedness) |
+| `{Group}_rank_correlation.tsv` | Rank-abundance Spearman rho per sampler pair. Same structure as nestedness_turnover: separate sampler and duration columns | taxon, Sampler1, Sampler2, duration1, duration2, rho, p_value |
 
 Export using `write_tsv(df, here("Data", primer, "out_intermediate", filename))` where `primer` is the group name (e.g., "Fungi").
 
@@ -275,11 +283,11 @@ Export using `write_tsv(df, here("Data", primer, "out_intermediate", filename))`
 
 | Script | Status | Key Issues |
 |--------|--------|-----------|
-| Data_Analysis_Fungi.Rmd | **REWRITE IN PROGRESS** | Template script — being rewritten to match revised analysis plan (Feb 2026). Old version had NMDS/PERMANOVA, full red-list sub-pipeline, aquatic fungi — all to be replaced |
-| Data_Analysis_Bacteria.Rmd | **TODO** | Previously harmonized (Feb 2025) but needs rewrite to match new template. Was: Google Sheets metadata, wrong paths |
-| Data_Analysis_Insects.Rmd | **TODO** | Google Sheets metadata, needs full rewrite to new template |
-| Data_Analysis_Vertebrates.Rmd | **TODO** | Google Sheets metadata, wrong data paths, very incomplete — needs full rewrite |
-| Data_Analysis_Plants.Rmd | **TODO** | xlsx metadata (not Meta_data.tsv), needs full rewrite. Has unique: merge ITS data, vegetation survey, invasives |
+| Data_Analysis_Fungi.Rmd | **✅ COMPLETE (TEMPLATE)** | Revised to match analysis plan (Feb 2026). Main effects GLMM (no interaction), negative binomial directly, model predictions on plot, coverage-based completeness/sensitivity with `nboot = 0` for speed, condensed contamination assessment, betapart + rank-abundance correlation. This is the template for harmonizing other scripts. |
+| Data_Analysis_Bacteria.Rmd | **TODO** | Needs rewrite to match Fungi template. Main changes: main effects GLMM, NB directly, coverage-based with nboot=0, taxonomy commentary for contaminants |
+| Data_Analysis_Insects.Rmd | **TODO** | Needs rewrite to match Fungi template |
+| Data_Analysis_Vertebrates.Rmd | **TODO** | Needs rewrite to match Fungi template |
+| Data_Analysis_Plants.Rmd | **TODO** | Needs rewrite to match Fungi template. Has unique sections: merge ITS data, vegetation survey, invasives |
 
 ### Implementation Order
 
@@ -292,8 +300,8 @@ Export using `write_tsv(df, here("Data", primer, "out_intermediate", filename))`
 1. **Metadata**: Use `read_tsv(here("Data", "Meta_data.tsv"))` everywhere
 2. **Data paths**: Use `here("Data", primer, "out_final", ...)` consistently
 3. **Contamination**: Full decontam + lab/field control + 2× max subtraction pipeline
-4. **Libraries**: Must include: forcats, purrr, corrplot, Biostrings, decontam, eulerr, betapart, ape, picante, iNEXT
-5. **New sections to add**: GLM for richness, Faith's PD (placeholder), sampling completeness (pooled reference), betapart nestedness/turnover, rank-abundance correlation, iNEXT sensitivity
+4. **Libraries**: Must include: forcats, purrr, corrplot, Biostrings, decontam, eulerr, betapart, ape, picante, iNEXT, glmmTMB, DHARMa
+5. **New sections to add**: GLMM for richness (with DHARMa diagnostics), Faith's PD (placeholder), sampling completeness (per-site reference + estimateD at 95% coverage), betapart nestedness/turnover, rank-abundance correlation, iNEXT sensitivity (estimateD-based, not iNEXT())
 6. **Sections to remove**: NMDS, PERMANOVA, betadisper, specaccum, old similarity ranking
 7. **Remove**: References to `here("Documents", ...)` (doesn't exist in repo)
 
@@ -332,6 +340,9 @@ dplyr, tidyr, purrr, forcats, readr, readxl, here, ggplot2, ggh4x
 
 # Ecology / diversity
 vegan, betapart, iNEXT, picante
+
+# Statistical modelling
+glmmTMB, DHARMa
 
 # Phylogenetics
 ape, Biostrings

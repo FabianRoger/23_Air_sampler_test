@@ -740,6 +740,8 @@ S_df %>%
 
 Sites are a blocking factor (random sample of locations). We fit a random intercept per site. Fit main effects model (no interaction) since passive samplers only have one duration level, making the full interaction uninterpretable.
 
+Overdispersion is ubiquitous in metabarcoding richness data, so we use negative binomial family directly.
+
 ```{r}
 S_df_model <-
   S_df %>%
@@ -747,48 +749,55 @@ S_df_model <-
 
 richness_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                          data = S_df_model,
-                         family = poisson(link = "log"))
+                         family = nbinom2)
 
 summary(richness_glmm)
 ```
 
-Check for overdispersion using DHARMa residual diagnostics.
+Check residuals to verify model adequacy.
 
 ```{r}
 sim_res <- simulateResiduals(richness_glmm, n = 1000)
-testDispersion(sim_res)
 plot(sim_res)
 ```
 
-Overdispersion is common in metabarcoding richness data. If detected (p < 0.05), refit with negative binomial family.
+Extract predicted richness and confidence intervals.
 
 ```{r}
-# Refit with negative binomial if overdispersion is detected
-richness_glmm_nb <- glmmTMB(S ~ Sampler + duration + (1|Sites),
-                             data = S_df_model,
-                             family = nbinom2)
+# Get predictions and standard errors
+pred_obj <- predict(richness_glmm, se.fit = TRUE, type = "response")
 
-summary(richness_glmm_nb)
-
-# Re-check residuals
-sim_res_nb <- simulateResiduals(richness_glmm_nb, n = 1000)
-plot(sim_res_nb)
-```
-
-Extract predicted richness and confidence intervals from final model.
-
-```{r}
-# Use negative binomial model for predictions
 richness_pred <-
   S_df_model %>%
-  mutate(pred_S = predict(richness_glmm_nb, type = "response"),
-         pred_SE = predict(richness_glmm_nb, type = "response", se.fit = TRUE)$se.fit,
-         pred_lower = pred_S - 1.96 * pred_SE,
-         pred_upper = pred_S + 1.96 * pred_SE)
+  mutate(
+    pred_S = pred_obj$fit,
+    pred_SE = pred_obj$se.fit,
+    pred_lower = pred_S - 1.96 * pred_SE,
+    pred_upper = pred_S + 1.96 * pred_SE
+  )
 
 richness_pred %>%
   select(Sampler, duration, Sites, S, pred_S, pred_lower, pred_upper) %>%
   head(20)
+```
+
+Plot observed richness with model predictions overlaid.
+
+```{r}
+ggplot(richness_pred, aes(x = duration, y = S)) +
+  facet_grid(~Sampler, scales = "free_x") +
+  # Observed data
+  geom_line(aes(group = Sites, colour = Sites), linewidth = 0.2, colour = "grey") +
+  geom_point(aes(colour = Sites)) +
+  # Model predictions
+  geom_ribbon(aes(y = pred_S, ymin = pred_lower, ymax = pred_upper, group = 1),
+              alpha = 0.2, fill = "darkblue") +
+  geom_line(aes(y = pred_S, group = 1), colour = "darkblue", linewidth = 1) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
+        legend.position = "bottom") +
+  labs(x = "Duration", y = "Observed richness (S)")
 ```
 
 ## Comparison with Burkhart
@@ -962,10 +971,10 @@ completeness_df %>%
   ylim(0, 1)
 ```
 
-Estimate asymptotic richness per site using estimateD at 95% coverage (pooled across all samplers).
+Estimate asymptotic richness per site using coverage-based estimation (pooled across all samplers). Use `nboot = 0` to skip confidence intervals for speed. Coverage-based is more principled than size-based (Chao1) for completeness calculations.
 
 ```{r}
-# Pool reads across all samplers per site, then estimate richness at 95% coverage
+# Build site abundance vectors (pooled across all samplers per site)
 site_abundance_list <-
   Fungi_ASV_clean_long %>%
   left_join(Meta) %>%
@@ -976,7 +985,6 @@ site_abundance_list <-
   group_by(Sites) %>%
   group_split()
 
-# Convert each site to a named abundance vector
 names(site_abundance_list) <- map_chr(site_abundance_list, ~unique(.x$Sites))
 
 site_vectors <- map(site_abundance_list, ~{
@@ -985,17 +993,18 @@ site_vectors <- map(site_abundance_list, ~{
   v
 })
 
+# Coverage-based estimation at 95% coverage (nboot = 0 for speed)
 inext_estimates <-
   map_df(names(site_vectors), function(site) {
     est <- estimateD(site_vectors[[site]],
                      datatype = "abundance",
                      base = "coverage",
-                     level = 0.95) %>%
+                     level = 0.95,
+                     nboot = 0) %>%
       filter(Order.q == 0)
     tibble(
       Sites = site,
-      S_estimated = est$qD,
-      SE = est$qD.LCL
+      S_estimated = est$qD
     )
   })
 ```
@@ -1086,21 +1095,19 @@ S_subgroup_df %>%
   labs(x = "Duration", y = "Observed richness (S)")
 ```
 
-Fit GLMM for each phylum separately (main effects only, same as overall model).
+Fit GLMM for each phylum separately (main effects only, negative binomial family).
 
 ```{r}
 ascomycota_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                            data = filter(S_subgroup_df, phylum == "Ascomycota"),
-                           family = poisson(link = "log"))
+                           family = nbinom2)
 summary(ascomycota_glmm)
 
 basidiomycota_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                               data = filter(S_subgroup_df, phylum == "Basidiomycota"),
-                              family = poisson(link = "log"))
+                              family = nbinom2)
 summary(basidiomycota_glmm)
 ```
-
-Overdispersion can be checked with DHARMa as above; negative binomial family can be used if needed.
 
 Analyze Agaricomycetes specifically (fruiting body fungi).
 
@@ -1372,13 +1379,12 @@ eulerr_options(quantities = list(fontsize = 10, col = "black"))
 plot(sampler_venn, legend = TRUE, quantities = TRUE)
 ```
 
-# iNEXT sensitivity analysis
+# Richness estimation sensitivity
 
-Use coverage-based richness estimation at 95% coverage to confirm sampler rankings match observed richness. This standardizes for differences in sequencing depth without relying on full rarefaction curves.
-
-Prepare abundance data per sample.
+Use coverage-based richness estimation at 95% coverage to confirm sampler rankings match observed richness. Use `nboot = 0` to skip confidence intervals for speed on 100+ samples. Consistent coverage-based approach throughout the analysis.
 
 ```{r}
+# Prepare per-sample abundance data
 sample_abundance <-
   Fungi_ASV_clean_long %>%
   left_join(Meta) %>%
@@ -1386,12 +1392,9 @@ sample_abundance <-
   filter(reads > 0) %>%
   group_by(Index) %>%
   group_split()
-```
 
-Estimate richness at 95% coverage for each sample.
-
-```{r}
-inext_sensitivity <-
+# Coverage-based estimation at 95% per sample (nboot = 0 for speed)
+sensitivity_df <-
   map_df(sample_abundance, function(samp) {
     idx <- unique(samp$Index)
     abund_vec <- samp$reads
@@ -1400,7 +1403,8 @@ inext_sensitivity <-
       estimateD(abund_vec,
                 datatype = "abundance",
                 base = "coverage",
-                level = 0.95) %>%
+                level = 0.95,
+                nboot = 0) %>%
         filter(Order.q == 0),
       error = function(e) NULL
     )
@@ -1412,15 +1416,15 @@ inext_sensitivity <-
       S_coverage95 = est$qD
     )
   }) %>%
-  left_join(Meta)
+  left_join(Meta) %>%
+  left_join(S_df %>% select(Index, S))
 ```
 
 Plot observed vs coverage-standardized richness.
 
 ```{r}
-inext_sensitivity %>%
+sensitivity_df %>%
   filter(!is.na(S_coverage95)) %>%
-  left_join(S_df %>% select(Index, S)) %>%
   pivot_longer(c(S, S_coverage95), names_to = "metric", values_to = "richness") %>%
   mutate(metric = ifelse(metric == "S", "Observed", "Coverage-standardized (95%)")) %>%
   ggplot(aes(y = richness, x = duration, colour = Sites)) +
