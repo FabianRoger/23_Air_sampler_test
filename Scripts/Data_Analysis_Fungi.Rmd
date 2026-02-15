@@ -625,7 +625,7 @@ Count excluded OTUs.
 ncol(Fungi_ASV[,-1]) - length(Fungi_seq_keep)
 ```
 
-This excludes 6000 OTUs.
+This excludes 6013 OTUs.
 
 Compute proportion of reads and sequences retained.
 
@@ -738,14 +738,14 @@ S_df %>%
 
 ## Formal statistical model
 
-Sites are a blocking factor (random sample of locations), not of direct interest. A random intercept is more appropriate than fixed effects and saves degrees of freedom. Fit generalized linear mixed model for richness.
+Sites are a blocking factor (random sample of locations). We fit a random intercept per site. Fit main effects model (no interaction) since passive samplers only have one duration level, making the full interaction uninterpretable.
 
 ```{r}
 S_df_model <-
   S_df %>%
   filter(!is.na(S))
 
-richness_glmm <- glmmTMB(S ~ Sampler * duration + (1|Sites),
+richness_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                          data = S_df_model,
                          family = poisson(link = "log"))
 
@@ -764,7 +764,7 @@ Overdispersion is common in metabarcoding richness data. If detected (p < 0.05),
 
 ```{r}
 # Refit with negative binomial if overdispersion is detected
-richness_glmm_nb <- glmmTMB(S ~ Sampler * duration + (1|Sites),
+richness_glmm_nb <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                              data = S_df_model,
                              family = nbinom2)
 
@@ -1086,15 +1086,15 @@ S_subgroup_df %>%
   labs(x = "Duration", y = "Observed richness (S)")
 ```
 
-Fit GLMM for each phylum separately (same approach as overall richness model).
+Fit GLMM for each phylum separately (main effects only, same as overall model).
 
 ```{r}
-ascomycota_glmm <- glmmTMB(S ~ Sampler * duration + (1|Sites),
+ascomycota_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                            data = filter(S_subgroup_df, phylum == "Ascomycota"),
                            family = poisson(link = "log"))
 summary(ascomycota_glmm)
 
-basidiomycota_glmm <- glmmTMB(S ~ Sampler * duration + (1|Sites),
+basidiomycota_glmm <- glmmTMB(S ~ Sampler + duration + (1|Sites),
                               data = filter(S_subgroup_df, phylum == "Basidiomycota"),
                               family = poisson(link = "log"))
 summary(basidiomycota_glmm)
