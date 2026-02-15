@@ -1110,10 +1110,16 @@ sample_meta <-
   mutate(Sampler_dur = paste(Sampler, duration))
 ```
 
+Convert to presence-absence matrix (betapart requires binary data).
+
+```{r}
+comm_mat_pa <- ifelse(comm_mat > 0, 1, 0)
+```
+
 Compute pairwise beta diversity.
 
 ```{r}
-beta_result <- betapart::beta.pair(comm_mat, index.family = "sorensen")
+beta_result <- betapart::beta.pair(comm_mat_pa, index.family = "sorensen")
 ```
 
 Extract pairwise nestedness and turnover matrices.
